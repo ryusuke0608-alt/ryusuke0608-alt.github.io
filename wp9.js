@@ -23,22 +23,22 @@ function candidateView() {
   return SPOTS.filter(supportsIntent).map(s => ({s, e: evaluate(s)})).filter(x => x.e.kind !== 'D');
 }
 function renderHome() {
-  return `${renderHeader('今、何したい？', false)}<section class="intro origin-card"><div class="origin-head"><span class="pin" aria-hidden="true">📍</span><div><h2>出発地点</h2><p class="origin-label">${esc(originLabel())}</p></div></div>${state.originMessage ? `<p class="origin-message" role="status">${esc(state.originMessage)}</p>` : ''}<div class="origin-actions"><button class="secondary main" data-action="geolocate">現在地を使う</button><button class="secondary" data-action="manualOrigin">場所を選ぶ</button></div><p class="muted">位置情報は画面を開いている間だけ使います。地図タイルの取得先には表示範囲が伝わります。徒歩時間は未確認です。</p></section><section class="intent-grid">${Object.entries(INTENTS).map(([id, i]) => `<button class="intent" data-action="intent" data-id="${id}"><span class="ic ic-${id}" aria-hidden="true">${i.icon}</span><strong>${i.label}</strong><small>${i.sub}</small></button>`).join('')}</section><p class="footnote">公式情報をもとに作成しています。最新の営業状況は現地でご確認ください。</p>`;
+  return `${renderHeader('今、何したい？', false)}<section class="intro origin-card"><div class="origin-head"><span class="pin" aria-hidden="true">📍</span><div><h2>出発地点</h2><p class="origin-label">${esc(originLabel())}</p></div></div>${state.originMessage ? `<p class="origin-message" role="status">${esc(state.originMessage)}</p>` : ''}<div class="origin-actions"><button class="secondary main" data-action="geolocate">現在地を使う</button><button class="secondary" data-action="manualOrigin">場所を選ぶ</button></div><p class="muted">位置情報はこの画面の中だけで使います。</p></section><section class="intent-grid">${Object.entries(INTENTS).map(([id, i]) => `<button class="intent" data-action="intent" data-id="${id}"><span class="ic ic-${id}" aria-hidden="true">${i.icon}</span><strong>${i.label}</strong><small>${i.sub}</small></button>`).join('')}</section>`;
 }
 function renderOrigin() {
-  return `${renderHeader('出発地点を選ぶ')}<section><p class="muted">確認済みの施設入口を選ぶか、地図上の任意の地点をタップしてください。住所検索はありません。</p><div class="origin-actions">${MANUAL_PRESETS.map(p => `<button class="secondary" data-action="preset" data-key="${esc(p.facility)}">${esc(p.label)}</button>`).join('')}</div>${state.originMessage ? `<p class="origin-message" role="status">${esc(state.originMessage)}</p>` : ''}</section><div id="map" class="map origin-map" aria-label="出発地点を選ぶ地図"></div><p class="map-attribution-note">地図：© OpenStreetMap contributors。地図が読めない場合も上の入口から選べます。</p>`;
+  return `${renderHeader('出発地点を選ぶ')}<section><p class="muted">施設の入口を選ぶか、地図をタップして地点を決めてください。</p><div class="origin-actions">${MANUAL_PRESETS.map(p => `<button class="secondary" data-action="preset" data-key="${esc(p.facility)}">${esc(p.label)}</button>`).join('')}</div>${state.originMessage ? `<p class="origin-message" role="status">${esc(state.originMessage)}</p>` : ''}</section><div id="map" class="map origin-map" aria-label="出発地点を選ぶ地図"></div><p class="map-attribution-note">地図：© OpenStreetMap contributors</p>`;
 }
 function card(spot, result) {
   const key = state.intent;
   const important = key === 'rest' ? ['price','indoor','purchaseNo','seating'] : key === 'eat' ? ['seating','eating','outsideFood','price','indoor'] : key === 'diaper' ? ['diaper','male'] : key === 'kids' ? ['kids','price','indoor','age'] : key === 'nursing' ? ['nursing'] : ['toilet'];
   const badge = result.kind === 'A' ? '条件に一致' : result.kind === 'B' ? '一部条件を確認できません' : '条件を広げると候補';
-  const unresolved = result.missing?.map(x => condText(x.key, x.v)).join('／');
-  return `<article id="card-${esc(spot.id)}" data-spot-id="${esc(spot.id)}" class="card state-${result.kind}"><div class="badge">${badge}</div><h3>${esc(spot.name)}</h3><p class="facility">${esc(spot.facility)}</p>${unresolved ? `<p class="alert">${esc(unresolved)}</p>` : ''}<div class="facts">${important.map(k => `<span class="fact ${condValue(spot,k)}">${esc(condText(k,condValue(spot,k)))}</span>`).join('')}</div><p class="meta"><span class="dist">${esc(distanceLabel(spot))}</span><span class="checked">${esc(spot.checked_at || CHECKED_AT)}時点の情報</span></p>${unknownSummary(spot)}<div class="card-actions"><button class="primary" data-action="detail" data-id="${esc(spot.id)}">詳しく見る</button>${entrance(spot) ? `<button class="secondary" data-action="focusMap" data-id="${esc(spot.id)}">地図で見る</button>` : ''}</div></article>`;
+  const unresolved = result.missing?.length ? condText(result.missing[0].key, result.missing[0].v) + (result.missing.length > 1 ? ' ほか' : '') : '';
+  return `<article id="card-${esc(spot.id)}" data-spot-id="${esc(spot.id)}" class="card state-${result.kind}"><div class="badge">${badge}</div><h3>${esc(spot.name)}</h3><p class="facility">${esc(spot.facility)}</p>${unresolved ? `<p class="alert">${esc(unresolved)}</p>` : ''}<div class="facts">${important.map(k => `<span class="fact ${condValue(spot,k)}">${esc(condText(k,condValue(spot,k)))}</span>`).join('')}</div><p class="meta"><span class="dist">${esc(distanceLabel(spot))}</span></p><div class="card-actions"><button class="primary" data-action="detail" data-id="${esc(spot.id)}">詳しく見る</button>${entrance(spot) ? `<button class="secondary" data-action="focusMap" data-id="${esc(spot.id)}">地図で見る</button>` : ''}</div></article>`;
 }
 function renderResults() {
   const i = INTENTS[state.intent], evaluated = candidateView();
   const a = evaluated.filter(x => x.e.kind === 'A'), b = evaluated.filter(x => x.e.kind === 'B'), c = evaluated.filter(x => x.e.kind === 'C'), noTrusted = !a.length;
-  let html = `${renderHeader(`${i.icon} ${i.label}`)}<div class="result-head"><div><strong>みなとみらい</strong><small>出発：${esc(originLabel())}</small></div><div class="origin-actions"><button class="secondary" data-action="manualOrigin">地点</button><button class="secondary" data-action="filter">条件</button></div></div><div class="chips">${activeChips()}</div><div id="map" class="map results-map" aria-label="周辺Spotの地図"></div><p class="map-attribution-note">ピンは施設入口です。スポットの館内位置と徒歩時間は別です。入口位置は未確認の施設（MARK IS みなとみらい、クイーンズスクエア横浜、パシフィコ横浜、コレットマーレ）はピンを表示しません。MARK ISの入口位置は未確認です。</p><div class="candidate-sheet">${quickConditions()}`;
+  let html = `${renderHeader(`${i.icon} ${i.label}`)}<div class="result-head"><div><strong>みなとみらい</strong><small>出発：${esc(originLabel())}</small></div><div class="origin-actions"><button class="secondary" data-action="manualOrigin">地点</button><button class="secondary" data-action="filter">条件</button></div></div><div class="chips">${activeChips()}</div><div id="map" class="map results-map" aria-label="周辺Spotの地図"></div><div class="candidate-sheet">${quickConditions()}`;
   if (noTrusted) html += `<section class="zero"><h2>すべての条件を確認できる場所は見つかりませんでした。</h2><p>未確認の候補は別に表示します。条件を広げる場合は、変更内容を選んでください。</p>${relaxOptions()}</section>`;
   if (a.length) html += `<section><h2>条件に一致</h2>${a.map(x => card(x.s,x.e)).join('')}</section>`;
   if (b.length) html += `<section><h2>一部条件を確認できない候補</h2>${b.map(x => card(x.s,x.e)).join('')}</section>`;
@@ -58,20 +58,19 @@ function relaxOptions() {
   return options.length ? `<div class="options">${options.join('')}</div>` : '<p class="muted">追加で広げられる条件はありません。</p>';
 }
 renderFilter = function () {
-  return wp8Filter().replace('「できれば」は未確認でも候補に残します。', '歩行経路の根拠がないため徒歩時間は未確認です。');
+  return wp8Filter();
 };
 renderDetail = function () {
   const spot = SPOTS.find(s => s.id === state.spotId);
   if (!spot) return renderResults();
   let html = wp8Detail();
-  html = html.replace('<p class="muted">現時点の営業・空き・一時休止は未確認です。</p>', `${state.filters.walk !== 'off' ? '<div class="status-row"><span class="fact-copy evidence-unknown">徒歩時間：未確認（歩行経路の根拠なし）</span></div>' : ''}<p class="muted">現時点の営業・空き・一時休止は未確認です。</p>`);
-  html = html.replace(`<p>${esc(spot.walk.label)}（施設入口まで。館内移動は含みません）</p>`, `<p>${esc(distanceLabel(spot))}</p><p>館内のSpotまでの移動は未確認です。</p>${entrance(spot) ? `<p class="muted">入口座標：${esc(entrance(spot).precision)} · <a href="${esc(entrance(spot).sourceUrl)}" target="_blank" rel="noopener">位置の出典を見る</a></p>` : ''}`);
+  html = html.replace(`<p>${esc(spot.walk.label)}（施設入口まで。館内移動は含みません）</p>`, `<p>${esc(distanceLabel(spot))}</p>`);
   return html;
 };
 function renderRoute() {
   const spot = SPOTS.find(s => s.id === state.spotId), at = entrance(spot);
-  const url = at ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(at.lat + ',' + at.lon)}&travelmode=walking` : null;
-  return `${renderHeader('ここへ行く')}<section><h2>${esc(spot.name)}</h2><p>${esc(spot.facility)}／${esc(spot.location)}</p><p>${esc(distanceLabel(spot))}</p><p class="muted">外部地図の目的地は施設入口です。館内のSpotまでの案内はありません。現在地はこのサイトから外部地図URLに含めません。</p>${url ? `<a class="primary route-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer">外部地図で道順を見る ↗</a>` : '<p class="alert">入口座標が未確認のため、外部地図への座標リンクは表示しません。</p>'}<button class="secondary route-confirm" data-action="usageConfirm">利用確認へ</button></section>`;
+  const url = at ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(at.lat + ',' + at.lon)}&travelmode=walking` : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(spot.facility + ' ' + spot.location)}&travelmode=walking`;
+  return `${renderHeader('ここへ行く')}<section><h2>${esc(spot.name)}</h2><p>${esc(spot.facility)}／${esc(spot.location)}</p><p>${esc(distanceLabel(spot))}</p><p class="muted">目的地は施設の入口です。</p><a class="primary route-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer">外部地図で道順を見る ↗</a><button class="secondary route-confirm" data-action="usageConfirm">利用確認へ</button></section>`;
 }
 function initMap() {
   const node = document.getElementById('map');
