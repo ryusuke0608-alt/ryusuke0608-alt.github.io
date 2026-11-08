@@ -9,6 +9,9 @@
 </head>
 <body>
   <main id="app" class="phone" aria-live="polite"></main>
+  <div id="boot-fallback" hidden><p>検索画面を開けませんでした。<a href="list.html">スポット一覧（簡易版）を見る</a></p></div>
+  <noscript><p>このサイトの検索画面にはJavaScriptが必要です。JavaScriptなしで見られる<a href="list.html">スポット一覧（簡易版）</a>も用意しています。</p></noscript>
+  <script>setTimeout(function(){if(!document.getElementById('app').children.length){document.getElementById('boot-fallback').hidden=false;}},6000);</script>
   <script src="vendor/leaflet.js"></script>
   <script src="spots.js"></script>
   <script src="locations.js"></script>
