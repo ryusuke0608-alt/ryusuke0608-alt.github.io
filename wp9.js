@@ -22,6 +22,43 @@ function distanceLabel(spot) {
 function candidateView() {
   return SPOTS.filter(supportsIntent).map(s => ({s, e: evaluate(s)})).filter(x => x.e.kind !== 'D');
 }
+/* 並び順：必須の該当数が多い順 → 出発地点から近い順（2026-11-08 本人指示）。
+   距離は並び替え専用。表示用の距離は従来どおり入口座標のみ（distanceLabel）。
+   施設の代表点は入口座標ではないので、表示・道順には使わない。 */
+function sortPoint(spot) {
+  const at = entrance(spot);
+  if (at) return at;
+  if (typeof FACILITY_POINTS !== 'undefined' && FACILITY_POINTS[spot.facility]) return FACILITY_POINTS[spot.facility];
+  if (typeof AREA_ANCHORS !== 'undefined' && AREA_ANCHORS[spot.area]) return AREA_ANCHORS[spot.area];
+  return null;
+}
+function floorPenaltyM(spot) {
+  // 階数差を並び替え専用の換算距離にする（1階との差 × 約4m）。同じ施設の中では下の階が上に来る。
+  // 階が複数ある表記（「1F・3F」など）は地上に一番近い階で数える。未確認はペナルティなし。
+  const floors = [];
+  const re = /B(\d+)F|(\d+)F/g;
+  let m;
+  while ((m = re.exec(String(spot.floor || ''))) !== null) floors.push(m[1] ? -Number(m[1]) : Number(m[2]));
+  if (!floors.length) return 0;
+  return Math.min(...floors.map(f => Math.abs(f - 1))) * 4;
+}
+function sortDistance(spot) {
+  if (!state.origin) return null;
+  const p = sortPoint(spot);
+  return p ? haversine(state.origin, p) + floorPenaltyM(spot) : null;
+}
+function mustYesCount(spot) {
+  let n = 0;
+  for (const [key, mode] of Object.entries(state.filters)) {
+    if (mode === 'must' && condValue(spot, key) === 'yes') n++;
+  }
+  return n;
+}
+function sortCandidates(list) {
+  const decorated = list.map(x => ({x, m: mustYesCount(x.s), d: sortDistance(x.s)}));
+  decorated.sort((p, q) => (q.m - p.m) || ((p.d === null ? Infinity : p.d) - (q.d === null ? Infinity : q.d)));
+  return decorated.map(y => y.x);
+}
 function loadHiddenIntents(){ try{ const v=JSON.parse(localStorage.getItem('yasumiru.hiddenIntents')||localStorage.getItem('cocomiru.hiddenIntents')||'[]'); return new Set(Array.isArray(v)?v.filter(x=>INTENTS[x]):[]); }catch(e){ return new Set(); } }
 function saveHiddenIntents(){ try{ localStorage.setItem('yasumiru.hiddenIntents', JSON.stringify([...state.hiddenIntents])); }catch(e){} }
 state.hiddenIntents = loadHiddenIntents();
@@ -44,7 +81,7 @@ function card(spot, result) {
 }
 function renderResults() {
   const i = INTENTS[state.intent], evaluated = candidateView();
-  const a = evaluated.filter(x => x.e.kind === 'A'), b = evaluated.filter(x => x.e.kind === 'B'), c = evaluated.filter(x => x.e.kind === 'C'), noTrusted = !a.length;
+  const a = sortCandidates(evaluated.filter(x => x.e.kind === 'A')), b = sortCandidates(evaluated.filter(x => x.e.kind === 'B')), c = sortCandidates(evaluated.filter(x => x.e.kind === 'C')), noTrusted = !a.length;
   let html = `${renderHeader(`${i.icon} ${i.label}`)}<div class="result-head"><div><small>出発：${esc(originLabel())}</small></div><div class="origin-actions"><button class="secondary" data-action="manualOrigin">地点</button><button class="secondary" data-action="filter">条件</button></div></div><div class="chips">${activeChips()}</div><div id="map" class="map results-map" aria-label="周辺Spotの地図"></div><div class="candidate-sheet">${quickConditions()}`;
   if (noTrusted) html += `<section class="zero"><h2>すべての条件を確認できる場所は見つかりませんでした。</h2><p>未確認の候補は別に表示します。条件を広げる場合は、変更内容を選んでください。</p>${relaxOptions()}</section>`;
   if (a.length) html += `<section><h2>条件に一致</h2>${a.map(x => card(x.s,x.e)).join('')}</section>`;
