@@ -25,6 +25,9 @@ const QUICK_CONDS = {rest:['price','indoor','purchaseNo','walk'],eat:['seating',
 const ATTRS = {seating:'座席',free_seating:'無料で座れる',indoor:'屋内',purchase_required:'購入が必要',eating_allowed:'飲食可能',outside_food_allowed:'持込飲食可能',current_available:'現在の利用可否',price:'利用料金',kids_space:'キッズスペース',age_eligibility:'対象年齢',diaper_table:'おむつ交換台',male_accessible:'男性も利用可能',nursing_room:'授乳室',toilet:'トイレ',accessible_toilet:'多目的トイレ',elevator_present:'エレベーター',step_free:'段差なしで到達',workspace:'作業スペース',wifi_available:'Wi-Fi',power_available:'電源',calls_allowed:'通話・Web会議',food_allowed:'飲食',fee_type:'料金',luggage_storage:'荷物預かり',storage_type:'預かりの種類',locker_sizes:'ロッカーのサイズ',suitcase_ok:'スーツケース',ic_payment:'IC支払い',fee_from:'料金目安',payment_methods:'支払い方法',time_limit_note:'時間制限'};
 const app = document.getElementById('app');
 const state = {screen:'home',intent:null,filters:{},draft:null,priceMode:'freeOnly',walkMinutes:10,relaxed:new Set(),spotId:null,detailFrom:'results',confirmation:null,history:[],origin:null,originMessage:'',selectedSpotId:null};
+const FORM_BASE = 'https://docs.google.com/forms/d/e/1FAIpQLSeyS4-4AXz06ZC3KSf0ncHFFWbNWhtCMAHCUwCWbYsIlstLEA/viewform';
+const FORM_SHORT = 'https://forms.gle/Zu81eGnTPPFAHziM7';
+function reportUrl(spot){return `${FORM_BASE}?entry.259277641=${encodeURIComponent('誤情報の報告')}&entry.1161295391=${encodeURIComponent(spot.name+'（'+spot.facility+'）')}`;}
 const copy = x => JSON.parse(JSON.stringify(x));
 const esc = x => String(x ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function enter(screen){state.history.push({screen:state.screen,spotId:state.spotId});state.screen=screen;history.pushState({screen},'',`#${screen}`);render();}
@@ -104,6 +107,7 @@ function renderDetail(){
     ${workSection}${storageSection}
     <section><h2>利用時間</h2><p>${esc(spot.hours)}</p></section>
     ${unknown.length?`<div class="caution">⚠ ${esc(unknown.join('／'))}です。現地でご確認ください。</div>`:''}
+    <section><p class="report-row"><a href="${reportUrl(spot)}" target="_blank" rel="noopener">この情報の誤りを報告する</a></p></section>
     <div class="sticky"><button class="primary" data-action="goUse">ここへ行く</button></div>`;
 }
 function microQuestion(){if(state.intent==='eat')return '持参した食べ物を食べられましたか？';if(state.intent==='rest')return '何も買わずに利用できましたか？';if(state.intent==='kids')return '対象年齢の条件を確認できましたか？';if(state.intent==='diaper')return '男性でもおむつ交換場所を使えましたか？';if(state.intent==='work')return '作業スペースとして使えましたか？';if(state.intent==='storage')return '荷物を預けられましたか？';return 'この設備を利用できましたか？';}
