@@ -83,9 +83,9 @@ function initMap() {
   const node = document.getElementById('map');
   if (!node) return;
   if (!window.L) { node.textContent = '地図を読み込めません。Spot一覧は利用できます。'; return; }
-  const defaultPoint=FACILITY_ENTRANCES['横浜美術館'];
-  const L = window.L, center = state.origin ? [state.origin.lat,state.origin.lon] : [defaultPoint.lat,defaultPoint.lon];
-  mapInstance = L.map(node,{zoomControl:true,scrollWheelZoom:false}).setView(center,15);
+  const TOKYO_CENTER=[35.6812,139.7671];
+  const L = window.L, center = state.origin ? [state.origin.lat,state.origin.lon] : TOKYO_CENTER;
+  mapInstance = L.map(node,{zoomControl:true,scrollWheelZoom:false}).setView(center,state.origin?15:10);
   L.tileLayer(MAP_CONFIG.tileUrl,{maxZoom:18,attribution:MAP_CONFIG.attribution,updateWhenIdle:true}).addTo(mapInstance);
   if (state.origin) L.circleMarker([state.origin.lat,state.origin.lon],{radius:7,color:'#1a4a90',fillColor:'#4c85d0',fillOpacity:1}).addTo(mapInstance).bindPopup('出発地点');
   if (state.screen === 'origin') {
