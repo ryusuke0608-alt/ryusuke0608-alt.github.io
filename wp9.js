@@ -1,5 +1,8 @@
-/* WP9.1 bounded interaction layer. WP8 facts and classification remain unchanged.
-   The only classification adapter is walk=UNKNOWN for dynamic origins. */
+/* WP9.1 bounded interaction layer. WP8 facts remain unchanged.
+   Classification adapter (2026-11-10, 本人決定で変更): walk は、出発地点から
+   入口（確認済みの場合）または施設の代表点までの直線距離を、一般的な徒歩速度
+   80m/分で割った「目安」で判定する。段差・傾斜・道路形状は考慮しない。
+   入口も代表点も無い施設は未確認のまま。 */
 let mapInstance = null;
 const facilityMarkers = new Map();
 const wp8Render = render;
@@ -58,18 +61,42 @@ function haversine(a, b) {
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
   return 12742000 * Math.asin(Math.min(1, Math.sqrt(h)));
 }
-function distanceLabel(spot) {
+/* 徒歩判定と距離表示の基点: 入口が確認済みなら入口、なければ施設の代表点。
+   代表点は「施設の場所」であって入口ではないので、表示では言い分ける。
+   道順の目的地には使わない（従来どおり入口座標か施設名検索）。 */
+function walkPoint(spot) {
   const at = entrance(spot);
-  if (!at) return '施設入口位置：未確認';
+  if (at) return { at, entrance: true };
+  if (typeof FACILITY_POINTS !== 'undefined' && FACILITY_POINTS[spot.facility]) return { at: FACILITY_POINTS[spot.facility], entrance: false };
+  return null;
+}
+function walkEstimateMin(spot) {
+  if (!state.origin) return null;
+  const wp = walkPoint(spot);
+  if (!wp) return null;
+  return haversine(state.origin, wp.at) / 80;
+}
+const wpCondValue = condValue;
+condValue = function (spot, key) {
+  if (key !== 'walk') return wpCondValue(spot, key);
+  const est = walkEstimateMin(spot);
+  if (est === null) return 'unknown';
+  return est <= state.walkMinutes ? 'yes' : 'no';
+};
+function distanceLabel(spot) {
+  const wp = walkPoint(spot);
+  if (!wp) return '施設入口位置：未確認';
   if (!state.origin) return '直線距離：出発地点未設定';
-  return `施設入口まで直線約${Math.round(haversine(state.origin, at) / 10) * 10}m（徒歩時間は未確認）`;
+  const d = haversine(state.origin, wp.at);
+  const body = `直線約${Math.round(d / 10) * 10}m（徒歩約${Math.max(1, Math.round(d / 80))}分の目安`;
+  return wp.entrance ? `施設入口まで${body}）` : `施設の場所まで${body}・入口は未確認）`;
 }
 function candidateView() {
   return SPOTS.filter(supportsIntent).map(s => ({s, e: evaluate(s)})).filter(x => x.e.kind !== 'D');
 }
 /* 並び順：必須の該当数が多い順 → 出発地点から近い順（2026-11-08 本人指示）。
-   距離は並び替え専用。表示用の距離は従来どおり入口座標のみ（distanceLabel）。
-   施設の代表点は入口座標ではないので、表示・道順には使わない。 */
+   並び替えの距離はこの sortPoint のまま。表示用の距離は distanceLabel が担当し、
+   入口が無い施設は代表点を「施設の場所まで」と明記して出す（2026-11-10）。 */
 function sortPoint(spot) {
   const at = entrance(spot);
   if (at) return at;
@@ -133,7 +160,7 @@ function renderResults() {
   const a = sortCandidates(evaluated.filter(x => x.e.kind === 'A')), b = sortCandidates(evaluated.filter(x => x.e.kind === 'B')), c = sortCandidates(evaluated.filter(x => x.e.kind === 'C')), noTrusted = !a.length;
   const total = a.length + b.length + c.length;
   const intentItems = Object.entries(INTENTS).filter(([id]) => !state.hiddenIntents.has(id)).map(([id, it]) => `<button class="intent-chip${id === state.intent ? ' active' : ''}" data-action="intent" data-id="${id}" aria-pressed="${id === state.intent}">${it.icon} ${esc(it.label)}</button>`).join('');
-  let html = `<header class="top results-top"><div class="top-main"><button class="icon-btn" data-action="back" aria-label="戻る">←</button><div><small>ヤスミル</small><h1>${i.icon} ${esc(i.label)}</h1></div></div><div class="top-controls"><button class="intent-select" data-action="intentMenu" aria-expanded="${intentMenuOpen}" aria-haspopup="true" aria-label="目的を切り替える（現在：${esc(i.label)}）">${i.icon} ${esc(i.label)}<span class="caret" aria-hidden="true">▾</span></button><button class="top-btn" data-action="manualOrigin">地点</button><button class="top-btn" data-action="filter">条件</button></div><div class="intent-menu" id="intentMenu"${intentMenuOpen ? '' : ' hidden'} role="group" aria-label="目的を選ぶ">${intentItems}</div></header><div class="results-stage"><div id="map" class="map results-map" aria-label="周辺Spotの地図"></div><div class="options-bar"><div class="chips-strip"><div class="chips">${activeChips()}</div>${quickStrip()}</div></div>`;
+  let html = `<header class="top results-top"><button class="icon-btn" data-action="back" aria-label="戻る">←</button><div class="top-controls"><button class="intent-select" data-action="intentMenu" aria-expanded="${intentMenuOpen}" aria-haspopup="true" aria-label="目的を切り替える（現在：${esc(i.label)}）">${i.icon} ${esc(i.label)}<span class="caret" aria-hidden="true">▾</span></button><button class="top-btn" data-action="manualOrigin">地点</button><button class="top-btn" data-action="filter">条件</button></div><div class="intent-menu" id="intentMenu"${intentMenuOpen ? '' : ' hidden'} role="group" aria-label="目的を選ぶ">${intentItems}</div></header><div class="results-stage"><div id="map" class="map results-map" aria-label="周辺Spotの地図"></div><div class="options-bar"><div class="chips-strip"><div class="chips">${activeChips()}</div>${quickStrip()}</div></div>`;
   html += `<div class="sheet${sheetOpen ? ' open' : ''}" id="resultSheet"><button class="sheet-handle" data-action="toggleSheet" aria-expanded="${sheetOpen}"><span class="grip" aria-hidden="true"></span><span class="sheet-count">${i.icon} ${esc(i.label)}：${total}件</span><span class="sheet-toggle">${sheetOpen ? '閉じる' : '一覧を広げる'}</span></button><div class="sheet-body" id="sheetBody"><div class="result-head"><div><small>出発：${esc(originLabel())}</small></div></div>`;
   if (!total) html += `<section class="zero"><h2>条件に合う場所が見つかりませんでした。</h2><p>条件を緩めるか、リセットして探し直してください。</p>${relaxOptions()}<div class="options"><button class="option" data-action="resetFilters">条件をリセットする →</button></div></section>`;
   else {
@@ -152,7 +179,7 @@ function relaxOptions() {
     if (SPOTS.filter(supportsIntent).some(s => ['unknown','conditional'].includes(condValue(s,key)))) options.push(`<button class="option" data-action="relax" data-key="${key}">「${esc(CONDS[key].label)}：未確認」も含める →</button>`);
   }
   if (state.filters.indoor === 'must') options.push('<button class="option" data-action="downgrade" data-key="indoor">屋外も含める（屋内を「できれば」に変更） →</button>');
-  if (state.walkMinutes < 15 && state.filters.walk !== 'off') options.push('<button class="option" data-action="walk15">表示条件を徒歩15分へ変更（徒歩時間自体は未確認） →</button>');
+  if (state.walkMinutes < 15 && state.filters.walk !== 'off') options.push('<button class="option" data-action="walk15">表示条件を徒歩15分へ変更 →</button>');
   if (state.priceMode === 'freeOnly' && state.filters.price === 'must') options.push('<button class="option" data-action="pricePref">無料を「できれば」に変更する →</button>');
   return options.length ? `<div class="options">${options.join('')}</div>` : '<p class="muted">追加で広げられる条件はありません。</p>';
 }

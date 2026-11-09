@@ -24,15 +24,14 @@ details summary{min-height:44px;padding:10px 0;box-sizing:border-box;cursor:poin
 .home-tools{margin:14px 0 4px;padding:0 16px;display:flex;gap:8px;flex-wrap:wrap}.home-tools a.secondary{display:inline-flex;align-items:center;min-height:48px;text-decoration:none}.report-row{margin:2px 0}.report-row a{color:var(--teal-dark);font-weight:700}.privacy{margin:16px 0 10px;font-size:14px;line-height:1.7}.privacy summary{min-height:44px;display:flex;align-items:center;color:var(--teal-dark);font-weight:700;cursor:pointer}.setting-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}.setting-row .secondary{min-height:44px}
 
 /* 検索結果画面UX（決定16・17、2026-11-09）: 地図主画面＋上部オプション＋下部シート＋2種類ピン */
-.results-stage{position:relative;height:calc(100dvh - 126px);overflow:hidden;background:#dfe8e2}
+.results-stage{position:relative;height:calc(100dvh - 68px);overflow:hidden;background:#dfe8e2}
 body:has(.results-stage) .phone{padding-bottom:0}
 .results-stage .results-map{position:absolute;inset:0;height:100%;width:100%;z-index:1}
 .options-bar{position:absolute;top:8px;left:8px;right:8px;z-index:500;background:#fffdf8f5;border:1px solid var(--line);border-radius:14px;padding:8px;box-shadow:0 2px 10px #7a6a4d26}
 .intent-chip{min-height:40px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:14px;white-space:nowrap}
 .intent-chip.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700}
-.results-top{position:relative;flex-direction:column;align-items:stretch;gap:10px;padding:12px 16px;min-height:0}
-.top-main{display:flex;align-items:center;gap:12px}
-.top-controls{display:flex;gap:8px;align-items:center}
+.results-top{position:relative;flex-direction:row;align-items:center;gap:8px;padding:12px 16px;min-height:0}
+.top-controls{flex:1;display:flex;gap:8px;align-items:center;min-width:0}
 .intent-select{flex:1;min-width:0;min-height:44px;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:999px;border:1px solid #ffffff59;background:#ffffff2e;color:#fff;font-weight:700;font-size:15px;padding:6px 12px;white-space:nowrap}
 .intent-select .caret{font-size:12px}
 .top-btn{flex:none;min-height:44px;border-radius:999px;border:1px solid #ffffff59;background:#ffffff2e;color:#fff;font-weight:700;padding:0 16px}
