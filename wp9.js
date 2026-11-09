@@ -10,9 +10,10 @@ const wp8Filter = renderFilter;
    sheetOpen はシートの開閉、state.resultsView は詳細から戻ったときの
    地図位置・一覧スクロール位置の保持に使う。 */
 let sheetOpen = false;
+let intentMenuOpen = false;
 let suppressSheetClick = false;
 const wpChooseIntent = chooseIntent;
-chooseIntent = function (intent) { state.resultsView = null; sheetOpen = false; wpChooseIntent(intent); };
+chooseIntent = function (intent) { state.resultsView = null; sheetOpen = false; intentMenuOpen = false; wpChooseIntent(intent); };
 function attachSheet() {
   const body = document.getElementById('sheetBody');
   if (body) {
@@ -31,7 +32,7 @@ function attachSheet() {
     if (!moved) return;
     const max = stage.getBoundingClientRect().height * 0.92;
     sheet.classList.add('dragging');
-    sheet.style.height = Math.max(120, Math.min(max, startH + dy)) + 'px';
+    sheet.style.height = Math.max(76, Math.min(max, startH + dy)) + 'px';
   });
   const finish = () => {
     if (startY === null) return;
@@ -123,12 +124,16 @@ function card(spot, result) {
   const unresolved = result.missing?.length ? condText(result.missing[0].key, result.missing[0].v) + (result.missing.length > 1 ? ' ほか' : '') : '';
   return `<article id="card-${esc(spot.id)}" data-spot-id="${esc(spot.id)}" class="card state-${result.kind}"><div class="badge">${badge}</div><h3>${esc(spot.name)}</h3><p class="facility">${esc(spot.facility)}</p>${unresolved ? `<p class="alert">${esc(unresolved)}</p>` : ''}<div class="facts">${important.map(k => `<span class="fact ${condValue(spot,k)}">${esc(condText(k,condValue(spot,k)))}</span>`).join('')}</div><p class="meta"><span class="dist">${esc(distanceLabel(spot))}</span></p><div class="card-actions"><button class="primary" data-action="detail" data-id="${esc(spot.id)}">詳しく見る</button>${entrance(spot) ? `<button class="secondary" data-action="focusMap" data-id="${esc(spot.id)}">地図で見る</button>` : ''}</div></article>`;
 }
+function quickStrip() {
+  const keys = QUICK_CONDS[state.intent] || [];
+  return keys.map(k => { const mode = state.filters[k] || 'off'; const next = mode === 'must' ? 'できれば' : mode === 'prefer' ? '指定なし' : '必須'; const label = CONDS[k].label + (k === 'walk' ? ` ${state.walkMinutes}分` : ''); return `<button class="quick-button mode-${mode}" data-action="quickCondition" data-key="${k}" aria-label="${esc(label)}：${mode === 'must' ? '必須' : mode === 'prefer' ? 'できれば' : '指定なし'}。タップで${next}に変更"><strong>${esc(label)}</strong><span>${mode === 'must' ? '必須' : mode === 'prefer' ? 'できれば' : '指定なし'}</span></button>`; }).join('');
+}
 function renderResults() {
   const i = INTENTS[state.intent], evaluated = candidateView();
   const a = sortCandidates(evaluated.filter(x => x.e.kind === 'A')), b = sortCandidates(evaluated.filter(x => x.e.kind === 'B')), c = sortCandidates(evaluated.filter(x => x.e.kind === 'C')), noTrusted = !a.length;
   const total = a.length + b.length + c.length;
-  const intentChips = Object.entries(INTENTS).filter(([id]) => !state.hiddenIntents.has(id)).map(([id, it]) => `<button class="intent-chip${id === state.intent ? ' active' : ''}" data-action="intent" data-id="${id}" aria-pressed="${id === state.intent}">${it.icon} ${esc(it.label)}</button>`).join('');
-  let html = `${renderHeader(`${i.icon} ${i.label}`)}<div class="results-stage"><div id="map" class="map results-map" aria-label="周辺Spotの地図"></div><div class="options-bar"><div class="intent-chips" role="group" aria-label="用途を切り替える">${intentChips}</div><div class="options-row"><div class="chips">${activeChips()}</div><div class="origin-actions"><button class="secondary" data-action="manualOrigin">地点</button><button class="secondary" data-action="filter">条件</button></div></div>${quickConditions()}</div>`;
+  const intentItems = Object.entries(INTENTS).filter(([id]) => !state.hiddenIntents.has(id)).map(([id, it]) => `<button class="intent-chip${id === state.intent ? ' active' : ''}" data-action="intent" data-id="${id}" aria-pressed="${id === state.intent}">${it.icon} ${esc(it.label)}</button>`).join('');
+  let html = `<header class="top results-top"><div class="top-main"><button class="icon-btn" data-action="back" aria-label="戻る">←</button><div><small>ヤスミル</small><h1>${i.icon} ${esc(i.label)}</h1></div></div><div class="top-controls"><button class="intent-select" data-action="intentMenu" aria-expanded="${intentMenuOpen}" aria-haspopup="true" aria-label="目的を切り替える（現在：${esc(i.label)}）">${i.icon} ${esc(i.label)}<span class="caret" aria-hidden="true">▾</span></button><button class="top-btn" data-action="manualOrigin">地点</button><button class="top-btn" data-action="filter">条件</button></div><div class="intent-menu" id="intentMenu"${intentMenuOpen ? '' : ' hidden'} role="group" aria-label="目的を選ぶ">${intentItems}</div></header><div class="results-stage"><div id="map" class="map results-map" aria-label="周辺Spotの地図"></div><div class="options-bar"><div class="chips-strip"><div class="chips">${activeChips()}</div>${quickStrip()}</div></div>`;
   html += `<div class="sheet${sheetOpen ? ' open' : ''}" id="resultSheet"><button class="sheet-handle" data-action="toggleSheet" aria-expanded="${sheetOpen}"><span class="grip" aria-hidden="true"></span><span class="sheet-count">${i.icon} ${esc(i.label)}：${total}件</span><span class="sheet-toggle">${sheetOpen ? '閉じる' : '一覧を広げる'}</span></button><div class="sheet-body" id="sheetBody"><div class="result-head"><div><small>出発：${esc(originLabel())}</small></div></div>`;
   if (!total) html += `<section class="zero"><h2>条件に合う場所が見つかりませんでした。</h2><p>条件を緩めるか、リセットして探し直してください。</p>${relaxOptions()}<div class="options"><button class="option" data-action="resetFilters">条件をリセットする →</button></div></section>`;
   else {
@@ -223,8 +228,9 @@ app.addEventListener('click', ev => {
   if (sbtn) { const sa=sbtn.dataset.action; if (sa==='settings') return enter('settings'); if (sa==='toggleIntent') { const id=sbtn.dataset.id; if (state.hiddenIntents.has(id)) state.hiddenIntents.delete(id); else { if (Object.keys(INTENTS).filter(x=>!state.hiddenIntents.has(x)).length<=1) return; state.hiddenIntents.add(id); } saveHiddenIntents(); return render(); } }
   const btn=ev.target.closest('[data-action]'); if (!btn) return;
   const {action:a,id,key}=btn.dataset;
-  if (!['geolocate','manualOrigin','preset','selectCard','focusMap','goUse','usageConfirm','toggleSheet','resetFilters'].includes(a)) return;
+  if (!['geolocate','manualOrigin','preset','selectCard','focusMap','goUse','usageConfirm','toggleSheet','resetFilters','intentMenu'].includes(a)) return;
   ev.stopImmediatePropagation();
+  if (a==='intentMenu') { intentMenuOpen = !intentMenuOpen; const menu = document.getElementById('intentMenu'); if (menu) { menu.hidden = !intentMenuOpen; btn.setAttribute('aria-expanded', String(intentMenuOpen)); } return; }
   if (a==='toggleSheet') { if (suppressSheetClick) return; sheetOpen=!sheetOpen; const sheet=document.getElementById('resultSheet'); if (sheet) { sheet.classList.toggle('open',sheetOpen); btn.setAttribute('aria-expanded',String(sheetOpen)); const label=btn.querySelector('.sheet-toggle'); if (label) label.textContent=sheetOpen?'閉じる':'一覧を広げる'; } return; }
   if (a==='resetFilters') { state.filters=Object.fromEntries(Object.keys(CONDS).map(k=>[k,'off'])); state.priceMode='includePaid'; state.relaxed=new Set(); return render(); }
   if (a==='geolocate') return useGeolocation();
