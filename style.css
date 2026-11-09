@@ -22,3 +22,37 @@ details summary{min-height:44px;padding:10px 0;box-sizing:border-box;cursor:poin
 .fact-tile{background:#fff;border:1px solid #e9dec6;border-radius:12px;padding:9px 13px;font-size:14px;font-weight:600;color:#24312c;box-shadow:0 2px 6px rgba(90,70,20,.06)}
 
 .home-tools{margin:14px 0 4px;padding:0 16px;display:flex;gap:8px;flex-wrap:wrap}.home-tools a.secondary{display:inline-flex;align-items:center;min-height:48px;text-decoration:none}.report-row{margin:2px 0}.report-row a{color:var(--teal-dark);font-weight:700}.privacy{margin:16px 0 10px;font-size:14px;line-height:1.7}.privacy summary{min-height:44px;display:flex;align-items:center;color:var(--teal-dark);font-weight:700;cursor:pointer}.setting-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}.setting-row .secondary{min-height:44px}
+
+/* 検索結果画面UX（決定16・17、2026-11-09）: 地図主画面＋上部オプション＋下部シート＋2種類ピン */
+.results-stage{position:relative;height:calc(100dvh - 82px);overflow:hidden;background:#dfe8e2}
+body:has(.results-stage) .phone{padding-bottom:0}
+.results-stage .results-map{position:absolute;inset:0;height:100%;width:100%;z-index:1}
+.options-bar{position:absolute;top:8px;left:8px;right:8px;z-index:500;background:#fffdf8f5;border:1px solid var(--line);border-radius:14px;padding:8px;box-shadow:0 2px 10px #7a6a4d26}
+.intent-chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
+.intent-chip{flex:0 0 auto;min-height:40px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:14px;white-space:nowrap}
+.intent-chip.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700}
+.options-row{display:flex;align-items:flex-start;gap:8px}
+.options-row .chips{flex:1;min-width:0}
+.options-bar .quick-conditions{padding:6px 0 0}
+.options-bar .quick-conditions h2{font-size:13px;margin:0 0 6px}
+.options-bar .quick-grid{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.options-bar .quick-button{flex:0 0 auto;min-height:40px;white-space:nowrap}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:600;height:34%;background:var(--cream);border-radius:18px 18px 0 0;box-shadow:0 -4px 18px #26312c33;display:flex;flex-direction:column;transition:height .25s ease}
+.sheet.open{height:88%}
+.sheet.dragging{transition:none}
+.sheet-handle{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;min-height:56px;padding:8px 12px 6px;background:none;border:none;border-radius:18px 18px 0 0;touch-action:none;cursor:grab;color:var(--ink)}
+.sheet-handle .grip{width:44px;height:5px;border-radius:3px;background:#c9bcab}
+.sheet-count{font-weight:700;font-size:15px}
+.sheet-toggle{color:var(--teal);font-size:13px;font-weight:700}
+.sheet-body{flex:1;overflow-y:auto;padding:0 14px 20px;-webkit-overflow-scrolling:touch}
+.sheet-body .result-head{padding:2px 0 8px}
+.pin-note{color:#71807a;font-size:12px}
+@media (min-width:900px){
+  body:has(.results-stage) .phone{max-width:1120px}
+  .results-stage{display:flex;flex-wrap:wrap;align-content:stretch}
+  .options-bar{position:static;flex:1 1 100%;margin:8px 8px 0}
+  .results-stage .results-map{position:relative;flex:1 1 50%;height:auto;min-height:300px}
+  .sheet{position:relative;flex:0 0 400px;height:auto;border-radius:0;box-shadow:none;border-left:1px solid var(--line)}
+  .sheet.open{height:auto}
+  .sheet-handle{cursor:default}
+}

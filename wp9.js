@@ -6,6 +6,50 @@ const wp8Render = render;
 const wp8Detail = renderDetail;
 const wp8Filter = renderFilter;
 
+/* 検索結果画面UX（決定16・17、2026-11-09）: 下部シート・状態保持・2種類ピン。
+   sheetOpen はシートの開閉、state.resultsView は詳細から戻ったときの
+   地図位置・一覧スクロール位置の保持に使う。 */
+let sheetOpen = false;
+let suppressSheetClick = false;
+const wpChooseIntent = chooseIntent;
+chooseIntent = function (intent) { state.resultsView = null; sheetOpen = false; wpChooseIntent(intent); };
+function attachSheet() {
+  const body = document.getElementById('sheetBody');
+  if (body) {
+    if (state.resultsView && state.resultsView.scroll) body.scrollTop = state.resultsView.scroll;
+    body.addEventListener('scroll', () => { if (state.screen === 'results') { state.resultsView = state.resultsView || { intent: state.intent }; state.resultsView.scroll = body.scrollTop; } }, { passive: true });
+  }
+  if (typeof document.querySelector !== 'function') return;
+  const handle = document.querySelector('.sheet-handle'), sheet = document.getElementById('resultSheet'), stage = document.querySelector('.results-stage');
+  if (!handle || !sheet || !stage || !handle.addEventListener) return;
+  let startY = null, startH = 0, moved = false;
+  handle.addEventListener('pointerdown', ev => { startY = ev.clientY; startH = sheet.getBoundingClientRect().height; moved = false; });
+  handle.addEventListener('pointermove', ev => {
+    if (startY === null) return;
+    const dy = startY - ev.clientY;
+    if (Math.abs(dy) > 4) moved = true;
+    if (!moved) return;
+    const max = stage.getBoundingClientRect().height * 0.92;
+    sheet.classList.add('dragging');
+    sheet.style.height = Math.max(120, Math.min(max, startH + dy)) + 'px';
+  });
+  const finish = () => {
+    if (startY === null) return;
+    startY = null;
+    sheet.classList.remove('dragging');
+    if (!moved) return;
+    suppressSheetClick = true;
+    setTimeout(() => { suppressSheetClick = false; }, 50);
+    sheetOpen = sheet.getBoundingClientRect().height > stage.getBoundingClientRect().height * 0.55;
+    sheet.style.height = '';
+    sheet.classList.toggle('open', sheetOpen);
+    handle.setAttribute('aria-expanded', String(sheetOpen));
+    const label = handle.querySelector('.sheet-toggle'); if (label) label.textContent = sheetOpen ? '閉じる' : '一覧を広げる';
+  };
+  handle.addEventListener('pointerup', finish);
+  handle.addEventListener('pointercancel', finish);
+}
+
 function entrance(spot) { return FACILITY_ENTRANCES[spot.facility] || null; }
 function originLabel() { return state.origin ? state.origin.label : '出発地点未設定'; }
 function haversine(a, b) {
@@ -82,13 +126,19 @@ function card(spot, result) {
 function renderResults() {
   const i = INTENTS[state.intent], evaluated = candidateView();
   const a = sortCandidates(evaluated.filter(x => x.e.kind === 'A')), b = sortCandidates(evaluated.filter(x => x.e.kind === 'B')), c = sortCandidates(evaluated.filter(x => x.e.kind === 'C')), noTrusted = !a.length;
-  let html = `${renderHeader(`${i.icon} ${i.label}`)}<div class="result-head"><div><small>出発：${esc(originLabel())}</small></div><div class="origin-actions"><button class="secondary" data-action="manualOrigin">地点</button><button class="secondary" data-action="filter">条件</button></div></div><div class="chips">${activeChips()}</div><div id="map" class="map results-map" aria-label="周辺Spotの地図"></div><div class="candidate-sheet">${quickConditions()}`;
-  if (noTrusted) html += `<section class="zero"><h2>すべての条件を確認できる場所は見つかりませんでした。</h2><p>未確認の候補は別に表示します。条件を広げる場合は、変更内容を選んでください。</p>${relaxOptions()}</section>`;
-  if (a.length) html += `<section><h2>条件に一致</h2>${a.map(x => card(x.s,x.e)).join('')}</section>`;
-  if (b.length) html += `<section><h2>一部条件を確認できない候補</h2>${b.map(x => card(x.s,x.e)).join('')}</section>`;
-  if (c.length) html += `<section><h2>条件を広げると候補</h2>${c.map(x => card(x.s,x.e)).join('')}</section>`;
-  if (!noTrusted) html += `<section class="relax-block"><h2>条件を広げる</h2>${relaxOptions()}</section>`;
-  return html + '</div>';
+  const total = a.length + b.length + c.length;
+  const intentChips = Object.entries(INTENTS).filter(([id]) => !state.hiddenIntents.has(id)).map(([id, it]) => `<button class="intent-chip${id === state.intent ? ' active' : ''}" data-action="intent" data-id="${id}" aria-pressed="${id === state.intent}">${it.icon} ${esc(it.label)}</button>`).join('');
+  let html = `${renderHeader(`${i.icon} ${i.label}`)}<div class="results-stage"><div id="map" class="map results-map" aria-label="周辺Spotの地図"></div><div class="options-bar"><div class="intent-chips" role="group" aria-label="用途を切り替える">${intentChips}</div><div class="options-row"><div class="chips">${activeChips()}</div><div class="origin-actions"><button class="secondary" data-action="manualOrigin">地点</button><button class="secondary" data-action="filter">条件</button></div></div>${quickConditions()}</div>`;
+  html += `<div class="sheet${sheetOpen ? ' open' : ''}" id="resultSheet"><button class="sheet-handle" data-action="toggleSheet" aria-expanded="${sheetOpen}"><span class="grip" aria-hidden="true"></span><span class="sheet-count">${i.icon} ${esc(i.label)}：${total}件</span><span class="sheet-toggle">${sheetOpen ? '閉じる' : '一覧を広げる'}</span></button><div class="sheet-body" id="sheetBody"><div class="result-head"><div><small>出発：${esc(originLabel())}</small></div></div>`;
+  if (!total) html += `<section class="zero"><h2>条件に合う場所が見つかりませんでした。</h2><p>条件を緩めるか、リセットして探し直してください。</p>${relaxOptions()}<div class="options"><button class="option" data-action="resetFilters">条件をリセットする →</button></div></section>`;
+  else {
+    if (noTrusted) html += `<section class="zero"><h2>すべての条件を確認できる場所は見つかりませんでした。</h2><p>未確認の候補は別に表示します。条件を広げる場合は、変更内容を選んでください。</p>${relaxOptions()}</section>`;
+    if (a.length) html += `<section><h2>条件に一致</h2>${a.map(x => card(x.s,x.e)).join('')}</section>`;
+    if (b.length) html += `<section><h2>一部条件を確認できない候補</h2>${b.map(x => card(x.s,x.e)).join('')}</section>`;
+    if (c.length) html += `<section><h2>条件を広げると候補</h2>${c.map(x => card(x.s,x.e)).join('')}</section>`;
+    if (!noTrusted) html += `<section class="relax-block"><h2>条件を広げる</h2>${relaxOptions()}</section>`;
+  }
+  return html + '</div></div></div>';
 }
 function relaxOptions() {
   const options = [];
@@ -123,6 +173,11 @@ function initMap() {
   const TOKYO_CENTER=[35.6812,139.7671];
   const L = window.L, center = state.origin ? [state.origin.lat,state.origin.lon] : TOKYO_CENTER;
   mapInstance = L.map(node,{zoomControl:true,scrollWheelZoom:false}).setView(center,state.origin?15:10);
+  if (state.screen === 'results') {
+    const saved = state.resultsView;
+    if (saved && saved.intent === state.intent && saved.center) mapInstance.setView([saved.center.lat, saved.center.lng], saved.zoom);
+    mapInstance.on('moveend', () => { if (state.screen === 'results' && mapInstance) state.resultsView = Object.assign(state.resultsView || {}, { intent: state.intent, center: mapInstance.getCenter(), zoom: mapInstance.getZoom() }); });
+  }
   L.tileLayer(MAP_CONFIG.tileUrl,{maxZoom:18,attribution:MAP_CONFIG.attribution,updateWhenIdle:true}).addTo(mapInstance);
   if (state.origin) L.circleMarker([state.origin.lat,state.origin.lon],{radius:7,color:'#1a4a90',fillColor:'#4c85d0',fillOpacity:1}).addTo(mapInstance).bindPopup('出発地点');
   if (state.screen === 'origin') {
@@ -130,11 +185,18 @@ function initMap() {
     return;
   }
   const grouped = new Map();
-  for (const x of candidateView()) { const at=entrance(x.s); if (at) { if (!grouped.has(x.s.facility)) grouped.set(x.s.facility,[]); grouped.get(x.s.facility).push(x); } }
+  for (const x of candidateView()) { if (!grouped.has(x.s.facility)) grouped.set(x.s.facility,[]); grouped.get(x.s.facility).push(x); }
   for (const [facility,items] of grouped) {
-    const at=FACILITY_ENTRANCES[facility], color=items.some(x=>x.e.kind==='A')?'#1f6d58':items.some(x=>x.e.kind==='B')?'#a76617':'#546ba1';
-    const marker=L.circleMarker([at.lat,at.lon],{radius:11,color,fillColor:color,fillOpacity:.82,weight:2}).addTo(mapInstance);
-    marker.bindPopup(`<strong>${esc(facility)} 入口</strong><br>${items.map(x=>`<button class="map-spot" data-action="selectCard" data-id="${esc(x.s.id)}">${esc(x.s.name)} · ${x.e.kind==='A'?'条件に一致':x.e.kind==='B'?'一部未確認':'条件を広げると候補'}</button>`).join('')}`);
+    const ent=FACILITY_ENTRANCES[facility], at=ent||FACILITY_POINTS[facility];
+    if (!at) continue;
+    const color=items.some(x=>x.e.kind==='A')?'#1f6d58':items.some(x=>x.e.kind==='B')?'#a76617':'#546ba1';
+    const spotsHtml=items.map(x=>`<button class="map-spot" data-action="selectCard" data-id="${esc(x.s.id)}">${esc(x.s.name)} · ${x.e.kind==='A'?'条件に一致':x.e.kind==='B'?'一部未確認':'条件を広げると候補'}</button>`).join('');
+    const marker=ent
+      ? L.circleMarker([at.lat,at.lon],{radius:11,color,fillColor:color,fillOpacity:.82,weight:2}).addTo(mapInstance)
+      : L.circleMarker([at.lat,at.lon],{radius:8,color,fillColor:color,fillOpacity:.45,weight:1.5}).addTo(mapInstance);
+    marker.bindPopup(ent
+      ? `<strong>${esc(facility)} 入口</strong><br>${spotsHtml}`
+      : `<strong>${esc(facility)}</strong><br><span class="pin-note">施設の場所（入口は未確認）</span><br>${spotsHtml}`);
     facilityMarkers.set(facility,marker);
   }
 }
@@ -144,6 +206,7 @@ render = function () {
   else if (state.screen === 'origin' || state.screen === 'route') { app.innerHTML=state.screen==='origin'?renderOrigin():renderRoute(); window.scrollTo(0,0); }
   else wp8Render();
   if (state.screen === 'origin' || state.screen === 'results') initMap();
+  if (state.screen === 'results') attachSheet();
 };
 function useGeolocation() {
   state.originMessage='現在地を取得しています…'; render();
@@ -160,8 +223,10 @@ app.addEventListener('click', ev => {
   if (sbtn) { const sa=sbtn.dataset.action; if (sa==='settings') return enter('settings'); if (sa==='toggleIntent') { const id=sbtn.dataset.id; if (state.hiddenIntents.has(id)) state.hiddenIntents.delete(id); else { if (Object.keys(INTENTS).filter(x=>!state.hiddenIntents.has(x)).length<=1) return; state.hiddenIntents.add(id); } saveHiddenIntents(); return render(); } }
   const btn=ev.target.closest('[data-action]'); if (!btn) return;
   const {action:a,id,key}=btn.dataset;
-  if (!['geolocate','manualOrigin','preset','selectCard','focusMap','goUse','usageConfirm'].includes(a)) return;
+  if (!['geolocate','manualOrigin','preset','selectCard','focusMap','goUse','usageConfirm','toggleSheet','resetFilters'].includes(a)) return;
   ev.stopImmediatePropagation();
+  if (a==='toggleSheet') { if (suppressSheetClick) return; sheetOpen=!sheetOpen; const sheet=document.getElementById('resultSheet'); if (sheet) { sheet.classList.toggle('open',sheetOpen); btn.setAttribute('aria-expanded',String(sheetOpen)); const label=btn.querySelector('.sheet-toggle'); if (label) label.textContent=sheetOpen?'閉じる':'一覧を広げる'; } return; }
+  if (a==='resetFilters') { state.filters=Object.fromEntries(Object.keys(CONDS).map(k=>[k,'off'])); state.priceMode='includePaid'; state.relaxed=new Set(); return render(); }
   if (a==='geolocate') return useGeolocation();
   if (a==='manualOrigin') return enter('origin');
   if (a==='preset') { const at=FACILITY_ENTRANCES[key]; if (!at) return; state.origin={kind:'preset',lat:at.lat,lon:at.lon,label:MANUAL_PRESETS.find(p=>p.facility===key)?.label||key,selectedAt:new Date().toISOString()}; state.originMessage='出発地点を設定しました。'; return back(); }
