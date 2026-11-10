@@ -97,6 +97,12 @@ function candidateView() {
 /* 並び順：必須の該当数が多い順 → 出発地点から近い順（2026-11-08 本人指示）。
    並び替えの距離はこの sortPoint のまま。表示用の距離は distanceLabel が担当し、
    入口が無い施設は代表点を「施設の場所まで」と明記して出す（2026-11-10）。 */
+/* 施設写真（Wikimedia Commons の自由ライセンス画像のみ。無い施設・読み込み失敗時は表示しない） */
+function facilityPhoto(spot) { return (typeof FACILITY_PHOTOS !== 'undefined' && FACILITY_PHOTOS[spot.facility]) || null; }
+function photoUrl(p, width) { return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(p.file)}?width=${width}`; }
+function photoCredit(p) { return [p.credit, p.license].filter(Boolean).join(' / ') + ' · Wikimedia Commons'; }
+function cardPhotoHtml(spot) { const p = facilityPhoto(spot); if (!p) return ''; return `<div class="card-photo"><img src="${photoUrl(p, 300)}" alt="${esc(spot.facility)}の写真" loading="lazy" onerror="this.closest('.card-photo').style.display='none'"><span class="photo-credit">${esc(photoCredit(p))}</span></div>`; }
+function detailPhotoHtml(spot) { const p = facilityPhoto(spot); if (!p) return ''; return `<figure class="spot-photo"><img src="${photoUrl(p, 1000)}" alt="${esc(spot.facility)}の写真" loading="lazy" onerror="this.closest('.spot-photo').style.display='none'"><figcaption>写真：${esc(photoCredit(p))}</figcaption></figure>`; }
 function sortPoint(spot) {
   const at = entrance(spot);
   if (at) return at;
@@ -149,7 +155,7 @@ function card(spot, result) {
   const important = key === 'rest' ? ['price','indoor','purchaseNo','seating'] : key === 'eat' ? ['seating','eating','outsideFood','price','indoor'] : key === 'diaper' ? ['diaper','male'] : key === 'kids' ? ['kids','price','indoor','age'] : key === 'nursing' ? ['nursing'] : key === 'work' ? ['wifi','power','calls','fee'] : key === 'storage' ? ['suitcase','icpay'] : ['toilet'];
   const badge = result.kind === 'A' ? '条件に一致' : result.kind === 'B' ? '一部条件を確認できません' : '条件を広げると候補';
   const unresolved = result.missing?.length ? condText(result.missing[0].key, result.missing[0].v) + (result.missing.length > 1 ? ' ほか' : '') : '';
-  return `<article id="card-${esc(spot.id)}" data-spot-id="${esc(spot.id)}" class="card state-${result.kind}"><div class="badge">${badge}</div><h3>${esc(spot.name)}</h3><p class="facility">${esc(spot.facility)}</p>${unresolved ? `<p class="alert">${esc(unresolved)}</p>` : ''}<div class="facts">${important.map(k => `<span class="fact ${condValue(spot,k)}">${esc(condText(k,condValue(spot,k)))}</span>`).join('')}</div><p class="meta"><span class="dist">${esc(distanceLabel(spot))}</span></p><div class="card-actions"><button class="primary" data-action="detail" data-id="${esc(spot.id)}">詳しく見る</button>${entrance(spot) ? `<button class="secondary" data-action="focusMap" data-id="${esc(spot.id)}">地図で見る</button>` : ''}</div></article>`;
+  return `<article id="card-${esc(spot.id)}" data-spot-id="${esc(spot.id)}" class="card state-${result.kind}"><div class="card-row"><div class="card-text"><div class="badge">${badge}</div><h3>${esc(spot.name)}</h3><p class="facility">${esc(spot.facility)}</p>${unresolved ? `<p class="alert">${esc(unresolved)}</p>` : ''}<div class="facts">${important.map(k => `<span class="fact ${condValue(spot,k)}">${esc(condText(k,condValue(spot,k)))}</span>`).join('')}</div><p class="meta"><span class="dist">${esc(distanceLabel(spot))}</span></p></div>${cardPhotoHtml(spot)}</div><div class="card-actions"><button class="primary" data-action="detail" data-id="${esc(spot.id)}">詳しく見る</button>${entrance(spot) ? `<button class="secondary" data-action="focusMap" data-id="${esc(spot.id)}">地図で見る</button>` : ''}</div></article>`;
 }
 function quickStrip() {
   const keys = QUICK_CONDS[state.intent] || [];
@@ -191,6 +197,8 @@ renderDetail = function () {
   if (!spot) return renderResults();
   let html = wp8Detail();
   html = html.replace(`<p>${esc(spot.walk.label)}（施設入口まで。館内移動は含みません）</p>`, `<p>${esc(distanceLabel(spot))}</p>`);
+  const titleEnd = `<p>${esc(spot.facility)}</p></div>`;
+  if (html.includes(titleEnd)) html = html.replace(titleEnd, titleEnd + detailPhotoHtml(spot));
   return html;
 };
 function renderRoute() {
