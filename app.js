@@ -94,13 +94,13 @@ function renderDetail(){
   const SECTION_KEYS=[...ACCESS_KEYS,...WORK_KEYS,...STORAGE_KEYS];
   const known=Object.entries(spot.facts).filter(([k,v])=>!SECTION_KEYS.includes(k)&&v!==null&&v!=='UNKNOWN');
   const unknown=Object.entries(spot.facts).filter(([k,v])=>!SECTION_KEYS.includes(k)&&k!=='current_available'&&(v===null||v==='UNKNOWN')).map(([k])=>`${unknownQuestion(k)}は未確認`);
-  const accessRows=ACCESS_KEYS.map(k=>{const v=spot.facts[k];return `<p>${esc(factCopy(k,v))}</p>`;}).join('');
-  const textRow=(label,v)=>`<p>${esc(label)}：${v?esc(v):'未確認'}</p>`;
-  const workSection=spot.facts.workspace===true?`<section><h2>作業環境</h2>${['wifi_available','power_available','calls_allowed','food_allowed','fee_type'].map(k=>`<p>${esc(factCopy(k,spot.facts[k]))}</p>`).join('')}${textRow('時間制限',spot.facts.time_limit_note)}</section>`:'';
+  const accessRows=ACCESS_KEYS.map(k=>{const v=spot.facts[k];return `<p${(v===null||v==='UNKNOWN')?' class="unconfirmed"':''}>${esc(factCopy(k,v))}</p>`;}).join('');
+  const textRow=(label,v)=>`<p${v?'':' class="unconfirmed"'}>${esc(label)}：${v?esc(v):'未確認'}</p>`;
+  const workSection=spot.facts.workspace===true?`<section><h2>作業環境</h2>${['wifi_available','power_available','calls_allowed','food_allowed','fee_type'].map(k=>{const v=spot.facts[k];return `<p${(v===null||v==='UNKNOWN')?' class="unconfirmed"':''}>${esc(factCopy(k,v))}</p>`;}).join('')}${textRow('時間制限',spot.facts.time_limit_note)}</section>`:'';
   const storageTypeText={LOCKER:'コインロッカー',STAFFED:'有人預かり',BOTH:'コインロッカー・有人預かりの両方'};
-  const storageSection=spot.facts.luggage_storage===true?`<section><h2>荷物預かり</h2>${textRow('種類',storageTypeText[spot.facts.storage_type]||null)}${textRow('ロッカーのサイズ',spot.facts.locker_sizes)}<p>${esc(factCopy('suitcase_ok',spot.facts.suitcase_ok))}</p>${textRow('料金目安',spot.facts.fee_from)}${spot.facts.fee_note?textRow('料金',spot.facts.fee_note):''}${textRow('支払い方法',spot.facts.payment_methods)}<p>${esc(factCopy('ic_payment',spot.facts.ic_payment))}</p></section>`:'';
+  const storageSection=spot.facts.luggage_storage===true?`<section><h2>荷物預かり</h2>${textRow('種類',storageTypeText[spot.facts.storage_type]||null)}${textRow('ロッカーのサイズ',spot.facts.locker_sizes)}<p${(spot.facts.suitcase_ok===null||spot.facts.suitcase_ok==='UNKNOWN')?' class="unconfirmed"':''}>${esc(factCopy('suitcase_ok',spot.facts.suitcase_ok))}</p>${textRow('料金目安',spot.facts.fee_from)}${spot.facts.fee_note?textRow('料金',spot.facts.fee_note):''}${textRow('支払い方法',spot.facts.payment_methods)}<p${(spot.facts.ic_payment===null||spot.facts.ic_payment==='UNKNOWN')?' class="unconfirmed"':''}>${esc(factCopy('ic_payment',spot.facts.ic_payment))}</p></section>`:'';
   return `${renderHeader('スポットの詳細')}
-    <div class="detail-title"><span class="badge state-${e.kind}">${e.kind==='A'?'条件に一致':e.kind==='B'?'一部条件を確認できません':e.kind==='C'?'条件を広げると候補':'条件外'}</span><h2>${esc(spot.name)}</h2><p>${esc(spot.facility)}</p></div>
+    <div class="detail-title"><span class="badge state-${e.kind}">${e.kind==='A'?'条件に一致':e.kind==='B'?'一部条件を確認できません':e.kind==='C'?'条件を広げると候補':'条件外'}</span><span class="official-mark">✓ 公式確認済み</span><h2>${esc(spot.name)}</h2><p>${esc(spot.facility)}</p></div>
     <section><h2>場所</h2><p>${esc(spot.facility)}／${esc(spot.location)}</p>${spot.floor.includes('未確認')?'':`<p>階：${esc(spot.floor)}</p>`}<p>${esc(spot.walk.label)}（施設入口まで。館内移動は含みません）</p></section>
     <section><h2>使えるもの</h2><div class="fact-grid">${[...new Set(known.map(([k,v])=>factCopy(k,v)))].map(t=>`<span class="fact-tile">${esc(t)}</span>`).join('')}</div></section>
     <section><h2>アクセス</h2>${accessRows}</section>

@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://yasumiru.kei-lab.xyz/sitemap.xml
