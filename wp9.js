@@ -132,8 +132,17 @@ function mustYesCount(spot) {
   }
   return n;
 }
+function preferYesCount(spot) {
+  let n = 0;
+  for (const [key, mode] of Object.entries(state.filters)) {
+    if (mode === 'prefer' && condValue(spot, key) === 'yes') n++;
+  }
+  return n;
+}
 function sortCandidates(list) {
-  const decorated = list.map(x => ({x, m: mustYesCount(x.s), d: sortDistance(x.s)}));
+  // 2026-11-16 本人指示: 「できれば」に該当する候補を上位に表示する。ただし遠方の候補が近くの候補を
+  // 追い越さないよう、一致1件あたり250m分の距離割引として並び替え専用の距離にだけ反映する（2026-11-08の並び順指示と両立させる）。
+  const decorated = list.map(x => { const d = sortDistance(x.s); return {x, m: mustYesCount(x.s), d: d === null ? null : Math.max(0, d - 250 * preferYesCount(x.s))}; });
   decorated.sort((p, q) => (q.m - p.m) || ((p.d === null ? Infinity : p.d) - (q.d === null ? Infinity : q.d)));
   return decorated.map(y => y.x);
 }
@@ -165,9 +174,11 @@ function renderResults() {
   const i = INTENTS[state.intent], evaluated = candidateView();
   const a = sortCandidates(evaluated.filter(x => x.e.kind === 'A')), b = sortCandidates(evaluated.filter(x => x.e.kind === 'B')), c = sortCandidates(evaluated.filter(x => x.e.kind === 'C')), noTrusted = !a.length;
   const total = a.length + b.length + c.length;
+  const scopeLabel = state.filters.walk === 'off' ? '全エリア' : `徒歩${state.walkMinutes}分圏内`;
+  const unknownWalkNote = state.filters.walk !== 'off' && evaluated.some(x => condValue(x.s, 'walk') === 'unknown') ? '・距離が未確認の候補を含む' : '';
   const intentItems = Object.entries(INTENTS).filter(([id]) => !state.hiddenIntents.has(id)).map(([id, it]) => `<button class="intent-chip${id === state.intent ? ' active' : ''}" data-action="intent" data-id="${id}" aria-pressed="${id === state.intent}">${it.icon} ${esc(it.label)}</button>`).join('');
   let html = `<header class="top results-top"><button class="icon-btn" data-action="back" aria-label="戻る">←</button><div class="top-controls"><button class="intent-select" data-action="intentMenu" aria-expanded="${intentMenuOpen}" aria-haspopup="true" aria-label="目的を切り替える（現在：${esc(i.label)}）">${i.icon} ${esc(i.label)}<span class="caret" aria-hidden="true">▾</span></button><button class="top-btn" data-action="manualOrigin">地点</button><button class="top-btn" data-action="filter">条件</button></div><div class="intent-menu" id="intentMenu"${intentMenuOpen ? '' : ' hidden'} role="group" aria-label="目的を選ぶ">${intentItems}</div></header><div class="results-stage"><div id="map" class="map results-map" aria-label="周辺Spotの地図"></div><div class="options-bar"><div class="chips-strip"><div class="chips">${activeChips()}</div>${quickStrip()}</div></div>`;
-  html += `<div class="sheet${sheetOpen ? ' open' : ''}" id="resultSheet"><button class="sheet-handle" data-action="toggleSheet" aria-expanded="${sheetOpen}"><span class="grip" aria-hidden="true"></span><span class="sheet-count">${i.icon} ${esc(i.label)}：${total}件</span><span class="sheet-toggle">${sheetOpen ? '閉じる' : '一覧を広げる'}</span></button><div class="sheet-body" id="sheetBody"><div class="result-head"><div><small>出発：${esc(originLabel())}</small></div></div>`;
+  html += `<div class="sheet${sheetOpen ? ' open' : ''}" id="resultSheet"><button class="sheet-handle" data-action="toggleSheet" aria-expanded="${sheetOpen}"><span class="grip" aria-hidden="true"></span><span class="sheet-count">${i.icon} ${esc(i.label)}：${total}件（${scopeLabel}）</span><span class="sheet-toggle">${sheetOpen ? '閉じる' : '一覧を広げる'}</span></button><div class="sheet-body" id="sheetBody"><div class="result-head"><div><small>出発：${esc(originLabel())}／${scopeLabel}${unknownWalkNote}</small></div></div>`;
   if (!total) html += `<section class="zero"><h2>条件に合う場所が見つかりませんでした。</h2><p>条件を緩めるか、リセットして探し直してください。</p>${relaxOptions()}<div class="options"><button class="option" data-action="resetFilters">条件をリセットする →</button></div></section>`;
   else {
     if (noTrusted) html += `<section class="zero"><h2>すべての条件を確認できる場所は見つかりませんでした。</h2><p>未確認の候補は別に表示します。条件を広げる場合は、変更内容を選んでください。</p>${relaxOptions()}</section>`;
