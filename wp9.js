@@ -15,6 +15,16 @@ const wp8Filter = renderFilter;
 let sheetOpen = false;
 let intentMenuOpen = false;
 let suppressSheetClick = false;
+/* 出発地点ポップアップ（2026-11-20 本人指示）: ホームで出発地点が未設定のまま
+   用途を選ぶと、先に出発地点を決めるダイアログを出す。pendingIntent は
+   ダイアログ表示中の用途ID。出発地点が決まった時点で結果画面へ進む。 */
+let pendingIntent = null;
+function proceedPendingIntent() { if (!pendingIntent) return false; const p = pendingIntent; pendingIntent = null; chooseIntent(p); return true; }
+function renderOriginPrompt() {
+  if (!pendingIntent) return '';
+  const i = INTENTS[pendingIntent];
+  return `<div class="origin-prompt-overlay"><div class="origin-prompt" role="dialog" aria-modal="true" aria-labelledby="originPromptTitle"><h2 id="originPromptTitle">出発地点を設定してください</h2><p>「${esc(i.label)}」の場所は、出発地点から近い順に表示されます。先に出発地点を決めてください。</p>${state.originMessage ? `<p class="origin-message" role="status">${esc(state.originMessage)}</p>` : ''}<div class="origin-prompt-actions"><button class="primary" data-action="geolocate">現在地を使う</button><button class="secondary" data-action="manualOrigin">場所を選ぶ</button><button class="secondary" data-action="originPromptCancel">キャンセル</button></div><p class="muted">位置情報はこの画面の中だけで使います。</p></div></div>`;
+}
 const wpChooseIntent = chooseIntent;
 chooseIntent = function (intent) { state.resultsView = null; sheetOpen = false; intentMenuOpen = false; wpChooseIntent(intent); };
 function attachSheet() {
@@ -154,7 +164,7 @@ function renderSettings(){
   return `${renderHeader('表示する用途')}<section><p class="muted">ホームに表示する用途を選べます。設定はこの端末の中に保存されます。</p>${Object.entries(INTENTS).map(([id,i])=>{ const on=!state.hiddenIntents.has(id); const lastOne=on&&visibleCount===1; return `<div class="setting-row"><span>${i.icon} ${esc(i.label)}</span><button class="secondary" data-action="toggleIntent" data-id="${id}"${lastOne?' disabled':''}>${on?'表示中':'非表示'}</button></div>`; }).join('')}</section>`;
 }
 function renderHome() {
-  return `${renderHeader('今、何したい？', false)}<section class="tagline"><p class="catch">"使えるかも"じゃなく、"使える"場所を。</p><p class="sub">載っているのは、行政データと施設の公式サイトで確認した情報だけ。休憩・食事・授乳・おむつ替え・トイレなど、色々な用途から探せます。</p></section><section class="intro origin-card"><div class="origin-head"><span class="pin" aria-hidden="true">📍</span><div><h2>出発地点</h2><p class="origin-label">${esc(originLabel())}</p></div></div>${state.originMessage ? `<p class="origin-message" role="status">${esc(state.originMessage)}</p>` : ''}<div class="origin-actions"><button class="secondary main" data-action="geolocate">現在地を使う</button><button class="secondary" data-action="manualOrigin">場所を選ぶ</button></div><p class="muted">位置情報はこの画面の中だけで使います。</p></section><section class="intent-grid">${Object.entries(INTENTS).filter(([id]) => !state.hiddenIntents.has(id)).map(([id, i]) => `<button class="intent" data-action="intent" data-id="${id}"><span class="ic ic-${id}" aria-hidden="true">${i.icon}</span><strong>${i.label}</strong><small>${i.sub}</small></button>`).join('')}</section><div class="home-tools"><button class="secondary" data-action="settings">表示する用途を設定</button><a class="secondary" href="https://forms.gle/Zu81eGnTPPFAHziM7" target="_blank" rel="noopener">要望・誤情報の報告</a></div><details class="privacy"><summary>このサイトについて</summary><p>ヤスミルは、外出先で『今、使える場所』を探すためのサイトです。掲載している情報は、行政の公開データと施設の公式サイトで確認したものだけです。確認できていない情報は載せていません。そのぶん載っていない場所もありますが、『行ってみたら使えなかった』を減らすための方針です。位置情報は、お使いの端末の中だけで距離の計算に使い、外部へ送ることはありません。地図の表示にはOpenStreetMapを使っていて、地図画像の取得先には、表示している範囲が伝わります。「この場所は使えましたか？」への回答は、保存も送信もされません。表示する用途の設定は、この端末の中に保存されます。誤りにお気づきの点や、掲載のリクエストは、要望フォームから送れます。送られた内容は公開されず、運営だけが確認します。連絡先のメールアドレスを書いた場合は、内容の確認や連絡にだけ使い、対応が終わってから1年を目安に削除します。内容によっては、回答や情報の修正をお約束できない場合があります。</p></details>`;
+  return `${renderHeader('今、何したい？', false)}<section class="tagline"><p class="catch">"使えるかも"じゃなく、"使える"場所を。</p><p class="sub">載っているのは、行政データと施設の公式サイトで確認した情報だけ。休憩・食事・授乳・おむつ替え・トイレなど、色々な用途から探せます。</p></section><section class="intro origin-card"><div class="origin-head"><span class="pin" aria-hidden="true">📍</span><div><h2>出発地点</h2><p class="origin-label">${esc(originLabel())}</p></div></div>${state.originMessage ? `<p class="origin-message" role="status">${esc(state.originMessage)}</p>` : ''}<div class="origin-actions"><button class="secondary main" data-action="geolocate">現在地を使う</button><button class="secondary" data-action="manualOrigin">場所を選ぶ</button></div><p class="muted">位置情報はこの画面の中だけで使います。</p></section><section class="intent-grid">${Object.entries(INTENTS).filter(([id]) => !state.hiddenIntents.has(id)).map(([id, i]) => `<button class="intent" data-action="intent" data-id="${id}"><span class="ic ic-${id}" aria-hidden="true">${i.icon}</span><strong>${i.label}</strong><small>${i.sub}</small></button>`).join('')}</section><div class="home-tools"><button class="secondary" data-action="settings">表示する用途を設定</button><a class="secondary" href="https://forms.gle/Zu81eGnTPPFAHziM7" target="_blank" rel="noopener">要望・誤情報の報告</a></div><details class="privacy"><summary>このサイトについて</summary><p>ヤスミルは、外出先で『今、使える場所』を探すためのサイトです。掲載している情報は、行政の公開データと施設の公式サイトで確認したものだけです。確認できていない情報は載せていません。そのぶん載っていない場所もありますが、『行ってみたら使えなかった』を減らすための方針です。位置情報は、お使いの端末の中だけで距離の計算に使い、外部へ送ることはありません。地図の表示にはOpenStreetMapを使っていて、地図画像の取得先には、表示している範囲が伝わります。「この場所は使えましたか？」への回答は、保存も送信もされません。表示する用途の設定は、この端末の中に保存されます。誤りにお気づきの点や、掲載のリクエストは、要望フォームから送れます。送られた内容は公開されず、運営だけが確認します。連絡先のメールアドレスを書いた場合は、内容の確認や連絡にだけ使い、対応が終わってから1年を目安に削除します。内容によっては、回答や情報の修正をお約束できない場合があります。</p></details>${renderOriginPrompt()}`;
 }
 function renderOrigin() {
   return `${renderHeader('出発地点を選ぶ')}<section><p class="muted">施設の入口を選ぶか、地図をタップして地点を決めてください。</p><div class="origin-actions">${MANUAL_PRESETS.map(p => `<button class="secondary" data-action="preset" data-key="${esc(p.facility)}">${esc(p.label)}</button>`).join('')}</div>${state.originMessage ? `<p class="origin-message" role="status">${esc(state.originMessage)}</p>` : ''}</section><div id="map" class="map origin-map" aria-label="出発地点を選ぶ地図"></div><p class="map-attribution-note">地図：© OpenStreetMap contributors</p>`;
@@ -232,7 +242,7 @@ function initMap() {
   L.tileLayer(MAP_CONFIG.tileUrl,{maxZoom:18,attribution:MAP_CONFIG.attribution,updateWhenIdle:true}).addTo(mapInstance);
   if (state.origin) L.circleMarker([state.origin.lat,state.origin.lon],{radius:7,color:'#1a4a90',fillColor:'#4c85d0',fillOpacity:1}).addTo(mapInstance).bindPopup('出発地点');
   if (state.screen === 'origin') {
-    mapInstance.on('click', ev => { const c=ev.latlng; state.origin={kind:'map_tap',lat:c.lat,lon:c.lng,label:'地図で選んだ地点',selectedAt:new Date().toISOString()}; state.originMessage='地図上の地点を出発地点に設定しました。'; back(); });
+    mapInstance.on('click', ev => { const c=ev.latlng; state.origin={kind:'map_tap',lat:c.lat,lon:c.lng,label:'地図で選んだ地点',selectedAt:new Date().toISOString()}; state.originMessage='地図上の地点を出発地点に設定しました。'; if (!proceedPendingIntent()) back(); });
     return;
   }
   const grouped = new Map();
@@ -266,7 +276,7 @@ function useGeolocation() {
     const {latitude,longitude,accuracy}=pos.coords;
     if (!Number.isFinite(latitude)||!Number.isFinite(longitude)||!Number.isFinite(accuracy)||accuracy>200) { state.originMessage='現在地の精度が低いため、場所を選んでください。'; enter('origin'); return; }
     state.origin={kind:'gps',lat:latitude,lon:longitude,accuracyM:accuracy,label:`現在地（精度約${Math.round(accuracy)}m）`,selectedAt:new Date().toISOString()};
-    state.originMessage='現在地を出発地点に設定しました。'; render();
+    state.originMessage='現在地を出発地点に設定しました。'; if (!proceedPendingIntent()) render();
   }, () => { state.originMessage='現在地を取得できませんでした。場所を選んでください。'; enter('origin'); }, {enableHighAccuracy:false,timeout:8000,maximumAge:0});
 }
 app.addEventListener('click', ev => {
@@ -274,6 +284,8 @@ app.addEventListener('click', ev => {
   if (sbtn) { const sa=sbtn.dataset.action; if (sa==='settings') return enter('settings'); if (sa==='toggleIntent') { const id=sbtn.dataset.id; if (state.hiddenIntents.has(id)) state.hiddenIntents.delete(id); else { if (Object.keys(INTENTS).filter(x=>!state.hiddenIntents.has(x)).length<=1) return; state.hiddenIntents.add(id); } saveHiddenIntents(); return render(); } }
   const btn=ev.target.closest('[data-action]'); if (!btn) return;
   const {action:a,id,key}=btn.dataset;
+  if (a==='intent' && state.screen==='home' && !state.origin) { ev.stopImmediatePropagation(); pendingIntent = id; state.originMessage=''; render(); return; }
+  if (a==='originPromptCancel') { ev.stopImmediatePropagation(); pendingIntent = null; render(); return; }
   if (!['geolocate','manualOrigin','preset','selectCard','focusMap','goUse','usageConfirm','toggleSheet','resetFilters','intentMenu'].includes(a)) return;
   ev.stopImmediatePropagation();
   if (a==='intentMenu') { intentMenuOpen = !intentMenuOpen; const menu = document.getElementById('intentMenu'); if (menu) { menu.hidden = !intentMenuOpen; btn.setAttribute('aria-expanded', String(intentMenuOpen)); } return; }
@@ -281,7 +293,7 @@ app.addEventListener('click', ev => {
   if (a==='resetFilters') { state.filters=Object.fromEntries(Object.keys(CONDS).map(k=>[k,'off'])); state.priceMode='includePaid'; state.relaxed=new Set(); return render(); }
   if (a==='geolocate') return useGeolocation();
   if (a==='manualOrigin') return enter('origin');
-  if (a==='preset') { const at=FACILITY_ENTRANCES[key]; if (!at) return; state.origin={kind:'preset',lat:at.lat,lon:at.lon,label:MANUAL_PRESETS.find(p=>p.facility===key)?.label||key,selectedAt:new Date().toISOString()}; state.originMessage='出発地点を設定しました。'; return back(); }
+  if (a==='preset') { const at=FACILITY_ENTRANCES[key]; if (!at) return; state.origin={kind:'preset',lat:at.lat,lon:at.lon,label:MANUAL_PRESETS.find(p=>p.facility===key)?.label||key,selectedAt:new Date().toISOString()}; state.originMessage='出発地点を設定しました。'; if (!proceedPendingIntent()) back(); return; }
   if (a==='selectCard') { state.selectedSpotId=id; const cardEl=document.getElementById(`card-${id}`); if (cardEl) { document.querySelectorAll('.selected-card').forEach(el=>el.classList.remove('selected-card')); cardEl.classList.add('selected-card'); cardEl.classList.remove('pulse'); void cardEl.offsetWidth; cardEl.classList.add('pulse'); cardEl.scrollIntoView({behavior:'smooth',block:'center'}); } return; }
   if (a==='focusMap') { const spot=SPOTS.find(s=>s.id===id), marker=spot&&facilityMarkers.get(spot.facility); state.selectedSpotId=id; const cardEl=document.getElementById(`card-${id}`); if (cardEl) { document.querySelectorAll('.selected-card').forEach(el=>el.classList.remove('selected-card')); cardEl.classList.add('selected-card'); cardEl.classList.remove('pulse'); void cardEl.offsetWidth; cardEl.classList.add('pulse'); } if (marker&&mapInstance) { marker.openPopup(); mapInstance.panTo(marker.getLatLng()); document.getElementById('map').scrollIntoView({behavior:'smooth',block:'center'}); } return; }
   if (a==='goUse') return enter('route');
