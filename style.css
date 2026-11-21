@@ -32,7 +32,7 @@ details summary{min-height:44px;padding:10px 0;box-sizing:border-box;cursor:poin
 /* 検索結果画面UX（決定16・17、2026-11-09）: 地図主画面＋上部オプション＋下部シート＋2種類ピン */
 .results-stage{position:relative;height:calc(100dvh - 72px);overflow:hidden;background:#dfe8e2}
 body:has(.results-stage) .phone{padding-bottom:0}
-body:has(.results-stage){overflow:hidden;overscroll-behavior:none}
+body:has(.results-stage){overflow:hidden;overscroll-behavior:none;overflow-anchor:none}
 .results-stage .results-map{position:absolute;inset:0;height:100%;width:100%;z-index:1}
 .options-bar{position:absolute;top:8px;left:8px;right:8px;z-index:500;background:#fffdf8f5;border:1px solid var(--line);border-radius:14px;padding:8px;box-shadow:0 2px 10px #7a6a4d26}
 .intent-chip{min-height:40px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:14px;white-space:nowrap}

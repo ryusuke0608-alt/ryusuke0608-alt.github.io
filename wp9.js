@@ -37,7 +37,7 @@ function attachSheet() {
   const handle = document.querySelector('.sheet-handle'), sheet = document.getElementById('resultSheet'), stage = document.querySelector('.results-stage');
   if (!handle || !sheet || !stage || !handle.addEventListener) return;
   let startY = null, startH = 0, moved = false;
-  handle.addEventListener('pointerdown', ev => { startY = ev.clientY; startH = sheet.getBoundingClientRect().height; moved = false; });
+  handle.addEventListener('pointerdown', ev => { startY = ev.clientY; startH = sheet.getBoundingClientRect().height; moved = false; if (handle.setPointerCapture) { try { handle.setPointerCapture(ev.pointerId); } catch (e) {} } });
   handle.addEventListener('pointermove', ev => {
     if (startY === null) return;
     const dy = startY - ev.clientY;
@@ -64,6 +64,13 @@ function attachSheet() {
   handle.addEventListener('pointercancel', finish);
 }
 
+let resultsResizePinned = false;
+function pinResultsScroll() {
+  window.scrollTo(0, 0);
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => { if (state.screen === 'results') window.scrollTo(0, 0); });
+  if (typeof setTimeout === 'function') setTimeout(() => { if (state.screen === 'results') window.scrollTo(0, 0); }, 350);
+  if (!resultsResizePinned && typeof window.addEventListener === 'function') { resultsResizePinned = true; window.addEventListener('resize', () => { if (state.screen === 'results') window.scrollTo(0, 0); }, { passive: true }); }
+}
 function entrance(spot) { return FACILITY_ENTRANCES[spot.facility] || null; }
 function originLabel() { return state.origin ? state.origin.label : '出発地点未設定'; }
 function haversine(a, b) {
@@ -267,7 +274,7 @@ render = function () {
   else if (state.screen === 'origin' || state.screen === 'route') { app.innerHTML=state.screen==='origin'?renderOrigin():renderRoute(); window.scrollTo(0,0); }
   else wp8Render();
   if (state.screen === 'origin' || state.screen === 'results') initMap();
-  if (state.screen === 'results') attachSheet();
+  if (state.screen === 'results') { attachSheet(); pinResultsScroll(); }
 };
 function useGeolocation() {
   state.originMessage='現在地を取得しています…'; render();
