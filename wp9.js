@@ -25,8 +25,19 @@ function renderOriginPrompt() {
   const i = INTENTS[pendingIntent];
   return `<div class="origin-prompt-overlay"><div class="origin-prompt" role="dialog" aria-modal="true" aria-labelledby="originPromptTitle"><h2 id="originPromptTitle">出発地点を設定してください</h2><p>「${esc(i.label)}」の場所は、出発地点から近い順に表示されます。先に出発地点を決めてください。</p>${state.originMessage ? `<p class="origin-message" role="status">${esc(state.originMessage)}</p>` : ''}<div class="origin-prompt-actions"><button class="primary" data-action="geolocate">現在地を使う</button><button class="secondary" data-action="manualOrigin">場所を選ぶ</button><button class="secondary" data-action="originPromptCancel">キャンセル</button></div><p class="muted">位置情報はこの画面の中だけで使います。</p></div></div>`;
 }
+cycleQuickCondition = function (key) { const mode = state.filters[key] || 'off'; if (mode === 'must' && !state.relaxed.has(key)) { state.relaxed.add(key); } else if (mode === 'must') { state.relaxed.delete(key); state.filters[key] = 'prefer'; if (key === 'price') state.priceMode = 'freePrefer'; } else if (mode === 'prefer') { state.filters[key] = 'off'; state.relaxed.delete(key); if (key === 'price') state.priceMode = 'includePaid'; } else { state.filters[key] = 'must'; if (key === 'price') state.priceMode = 'freeOnly'; } render(); };
 const wpChooseIntent = chooseIntent;
 chooseIntent = function (intent) { state.resultsView = null; sheetOpen = false; intentMenuOpen = false; wpChooseIntent(intent); };
+function stripChips() {
+  const quick = new Set(QUICK_CONDS[state.intent] || []);
+  return Object.entries(state.filters).filter(([k, v]) => v !== 'off' && !quick.has(k)).map(([k, v]) => { const relaxed = state.relaxed.has(k); const cur = relaxed ? '未確認も含む' : v === 'must' ? '必須' : 'できれば'; const next = v === 'must' ? (relaxed ? 'できれば' : '未確認も含む') : '指定なし'; const label = `${CONDS[k].label}${k === 'walk' ? ` ${state.walkMinutes}分` : ''}`; return `<button class="chip ${relaxed ? 'relaxed' : ''}" data-action="chipCondition" data-key="${k}" aria-label="${esc(label)}：${cur}。タップで${next}に変更">${esc(label)} · ${cur}</button>`; }).join('');
+}
+let stripDownPos = null, stripDragMoved = false;
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('pointerdown', ev => { stripDownPos = (ev.target && ev.target.closest && ev.target.closest('.chips-strip')) ? { x: ev.clientX, y: ev.clientY } : null; }, { passive: true });
+  document.addEventListener('pointerup', ev => { if (stripDownPos && (Math.abs(ev.clientX - stripDownPos.x) > 8 || Math.abs(ev.clientY - stripDownPos.y) > 8)) { stripDragMoved = true; if (typeof setTimeout === 'function') setTimeout(() => { stripDragMoved = false; }, 150); } stripDownPos = null; }, { passive: true });
+  document.addEventListener('click', ev => { if (stripDragMoved && ev.target && ev.target.closest && ev.target.closest('.chips-strip')) { ev.stopPropagation(); ev.preventDefault(); stripDragMoved = false; } }, true);
+}
 function attachSheet() {
   const body = document.getElementById('sheetBody');
   if (body) {
@@ -185,16 +196,16 @@ function card(spot, result) {
 }
 function quickStrip() {
   const keys = QUICK_CONDS[state.intent] || [];
-  return keys.map(k => { const mode = state.filters[k] || 'off'; const next = mode === 'must' ? 'できれば' : mode === 'prefer' ? '指定なし' : '必須'; const label = CONDS[k].label + (k === 'walk' ? ` ${state.walkMinutes}分` : ''); return `<button class="quick-button mode-${mode}" data-action="quickCondition" data-key="${k}" aria-label="${esc(label)}：${mode === 'must' ? '必須' : mode === 'prefer' ? 'できれば' : '指定なし'}。タップで${next}に変更"><strong>${esc(label)}</strong><span>${mode === 'must' ? '必須' : mode === 'prefer' ? 'できれば' : '指定なし'}</span></button>`; }).join('');
+  return keys.map(k => { const mode = state.filters[k] || 'off'; const relaxed = mode === 'must' && state.relaxed.has(k); const cur = relaxed ? '未確認も含む' : mode === 'must' ? '必須' : mode === 'prefer' ? 'できれば' : '指定なし'; const next = relaxed ? 'できれば' : mode === 'must' ? '未確認も含む' : mode === 'prefer' ? '指定なし' : '必須'; const label = CONDS[k].label + (k === 'walk' ? ` ${state.walkMinutes}分` : ''); return `<button class="quick-button mode-${mode}${relaxed ? ' relaxed' : ''}" data-action="quickCondition" data-key="${k}" aria-label="${esc(label)}：${cur}。タップで${next}に変更"><strong>${esc(label)}</strong><span>${cur}</span></button>`; }).join('');
 }
 function renderResults() {
   const i = INTENTS[state.intent], evaluated = candidateView();
   const a = sortCandidates(evaluated.filter(x => x.e.kind === 'A')), b = sortCandidates(evaluated.filter(x => x.e.kind === 'B')), c = sortCandidates(evaluated.filter(x => x.e.kind === 'C')), noTrusted = !a.length;
   const total = a.length + b.length + c.length;
-  const scopeLabel = state.filters.walk === 'off' ? '全エリア' : `徒歩${state.walkMinutes}分圏内`;
+  const scopeLabel = state.filters.walk === 'off' ? '全エリア' : state.filters.walk === 'prefer' ? `全エリア（徒歩${state.walkMinutes}分を目安）` : `徒歩${state.walkMinutes}分圏内`;
   const unknownWalkNote = state.filters.walk !== 'off' && evaluated.some(x => condValue(x.s, 'walk') === 'unknown') ? '・距離が未確認の候補を含む' : '';
   const intentItems = Object.entries(INTENTS).filter(([id]) => !state.hiddenIntents.has(id)).map(([id, it]) => `<button class="intent-chip${id === state.intent ? ' active' : ''}" data-action="intent" data-id="${id}" aria-pressed="${id === state.intent}">${it.icon} ${esc(it.label)}</button>`).join('');
-  let html = `<header class="top results-top"><button class="icon-btn" data-action="back" aria-label="戻る">←</button><div class="top-controls"><button class="intent-select" data-action="intentMenu" aria-expanded="${intentMenuOpen}" aria-haspopup="true" aria-label="目的を切り替える（現在：${esc(i.label)}）">${i.icon} ${esc(i.label)}<span class="caret" aria-hidden="true">▾</span></button><button class="top-btn" data-action="manualOrigin">地点</button><button class="top-btn" data-action="filter">条件</button></div><div class="intent-menu" id="intentMenu"${intentMenuOpen ? '' : ' hidden'} role="group" aria-label="目的を選ぶ">${intentItems}</div></header><div class="results-stage"><div id="map" class="map results-map" aria-label="周辺Spotの地図"></div><div class="options-bar"><div class="chips-strip"><div class="chips">${activeChips()}</div>${quickStrip()}</div></div>`;
+  let html = `<header class="top results-top"><button class="icon-btn" data-action="back" aria-label="戻る">←</button><div class="top-controls"><button class="intent-select" data-action="intentMenu" aria-expanded="${intentMenuOpen}" aria-haspopup="true" aria-label="目的を切り替える（現在：${esc(i.label)}）">${i.icon} ${esc(i.label)}<span class="caret" aria-hidden="true">▾</span></button><button class="top-btn" data-action="manualOrigin">地点</button><button class="top-btn" data-action="filter">条件</button></div><div class="intent-menu" id="intentMenu"${intentMenuOpen ? '' : ' hidden'} role="group" aria-label="目的を選ぶ">${intentItems}</div></header><div class="results-stage"><div id="map" class="map results-map" aria-label="周辺Spotの地図"></div><div class="options-bar"><div class="chips-strip">${quickStrip()}${stripChips()}</div></div>${state.origin ? `<button class="locate-btn" data-action="recenter" aria-label="出発地点に戻る" title="出発地点に戻る">◎</button>` : ''}`;
   html += `<div class="sheet${sheetOpen ? ' open' : ''}" id="resultSheet"><button class="sheet-handle" data-action="toggleSheet" aria-expanded="${sheetOpen}"><span class="grip" aria-hidden="true"></span><span class="sheet-count">${i.icon} ${esc(i.label)}：${total}件（${scopeLabel}）</span><span class="sheet-toggle">${sheetOpen ? '閉じる' : '一覧を広げる'}</span></button><div class="sheet-body" id="sheetBody"><div class="result-head"><div><small>出発：${esc(originLabel())}／${scopeLabel}${unknownWalkNote}</small></div></div>`;
   if (!total) html += `<section class="zero"><h2>条件に合う場所が見つかりませんでした。</h2><p>条件を緩めるか、リセットして探し直してください。</p>${relaxOptions()}<div class="options"><button class="option" data-action="resetFilters">条件をリセットする →</button></div></section>`;
   else {
@@ -293,11 +304,12 @@ app.addEventListener('click', ev => {
   const {action:a,id,key}=btn.dataset;
   if (a==='intent' && state.screen==='home' && !state.origin) { ev.stopImmediatePropagation(); pendingIntent = id; state.originMessage=''; render(); return; }
   if (a==='originPromptCancel') { ev.stopImmediatePropagation(); pendingIntent = null; render(); return; }
-  if (!['geolocate','manualOrigin','preset','selectCard','focusMap','goUse','usageConfirm','toggleSheet','resetFilters','intentMenu'].includes(a)) return;
+  if (!['geolocate','manualOrigin','preset','selectCard','focusMap','goUse','usageConfirm','toggleSheet','resetFilters','intentMenu','recenter'].includes(a)) return;
   ev.stopImmediatePropagation();
   if (a==='intentMenu') { intentMenuOpen = !intentMenuOpen; const menu = document.getElementById('intentMenu'); if (menu) { menu.hidden = !intentMenuOpen; btn.setAttribute('aria-expanded', String(intentMenuOpen)); } return; }
   if (a==='toggleSheet') { if (suppressSheetClick) return; sheetOpen=!sheetOpen; const sheet=document.getElementById('resultSheet'); if (sheet) { sheet.classList.toggle('open',sheetOpen); btn.setAttribute('aria-expanded',String(sheetOpen)); const label=btn.querySelector('.sheet-toggle'); if (label) label.textContent=sheetOpen?'閉じる':'一覧を広げる'; } return; }
   if (a==='resetFilters') { state.filters=Object.fromEntries(Object.keys(CONDS).map(k=>[k,'off'])); state.priceMode='includePaid'; state.relaxed=new Set(); return render(); }
+  if (a==='recenter') { if (mapInstance && state.origin) mapInstance.setView([state.origin.lat, state.origin.lon], Math.max(mapInstance.getZoom(), 15)); return; }
   if (a==='geolocate') return useGeolocation();
   if (a==='manualOrigin') return enter('origin');
   if (a==='preset') { const at=FACILITY_ENTRANCES[key]; if (!at) return; state.origin={kind:'preset',lat:at.lat,lon:at.lon,label:MANUAL_PRESETS.find(p=>p.facility===key)?.label||key,selectedAt:new Date().toISOString()}; state.originMessage='出発地点を設定しました。'; if (!proceedPendingIntent()) back(); return; }
