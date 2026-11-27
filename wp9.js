@@ -5,6 +5,12 @@
    入口も代表点も無い施設は未確認のまま。 */
 let mapInstance = null;
 const facilityMarkers = new Map();
+const markerBaseStyles = new Map();
+let guideTargets = [];
+/* spotId → {sec, idx}: 結果リスト内での位置。ピンを押したとき、対象カードが
+   初期表示（各セクション8件）の外にある場合に、そのセクションを広げてから
+   ハイライトするために使う（Codexレビュー 2026-11-27 指摘への対応）。 */
+let cardIndex = new Map();
 const wp8Render = render;
 const wp8Detail = renderDetail;
 const wp8Filter = renderFilter;
@@ -42,6 +48,21 @@ function attachSheet() {
   const body = document.getElementById('sheetBody');
   if (body) {
     if (state.resultsView && state.resultsView.scroll) body.scrollTop = state.resultsView.scroll;
+    /* 詳細から戻ったときの位置復元（2026-11-27 UI改善セット）: 写真の読み込み等で
+       カードの高さが変わっても、開いたカードの相対位置を基準に補正して元へ戻す。 */
+    const rv = state.resultsView;
+    if (rv && rv.anchorId && typeof rv.anchorDelta === 'number') {
+      let corrected = 0;
+      const correct = () => {
+        if (state.screen !== 'results') return;
+        const b = document.getElementById('sheetBody'), c = document.getElementById(`card-${rv.anchorId}`);
+        if (!b || !c || !c.getBoundingClientRect || !b.getBoundingClientRect) return;
+        const d = c.getBoundingClientRect().top - b.getBoundingClientRect().top;
+        if (Number.isFinite(d) && Number.isFinite(rv.anchorDelta)) { b.scrollTop += (d - rv.anchorDelta); corrected++; if (corrected >= 2) rv.anchorDelta = null; }
+      };
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(correct);
+      if (typeof setTimeout === 'function') setTimeout(correct, 400);
+    }
     body.addEventListener('scroll', () => { if (state.screen === 'results') { state.resultsView = state.resultsView || { intent: state.intent }; state.resultsView.scroll = body.scrollTop; } }, { passive: true });
   }
   if (typeof document.querySelector !== 'function') return;
@@ -119,6 +140,28 @@ function distanceLabel(spot) {
   const body = `直線約${Math.round(d / 10) * 10}m（徒歩約${Math.max(1, Math.round(d / 80))}分の目安`;
   return wp.entrance ? `施設入口まで${body}）` : `施設の場所まで${body}・入口は未確認）`;
 }
+/* 「いま使える」判定（2026-11-27 UI改善セット）: 公式確認済みの営業時間が
+   「9:00–17:00」のような単一の時間帯として読み取れる場合だけ、現在時刻と比べて
+   営業中かどうかを返す。読み取れない・未確認の場合は null（バッジを付けない。
+   付けないこと自体が「分からないことを断定しない」設計）。曜日別の閉館日などは
+   単一時間帯の形をしていないため、この判定には入らない。 */
+function openNow(spot, now) {
+  const h = String(spot.hours ?? '').trim();
+  if (h === '24時間' || h === '24時間営業') return true;
+  const m = h.match(/^(\d{1,2}):(\d{2})\s*[–—\-〜~～]\s*(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  // 時刻としてあり得ない値（分が60以上、開始が24時台、終了が24:00超）は
+  // 「読み取れない」として null を返す（Codexレビュー 2026-11-27 指摘）。
+  if (Number(m[2]) > 59 || Number(m[4]) > 59) return null;
+  if (Number(m[1]) > 23) return null;
+  if (Number(m[3]) > 24 || (Number(m[3]) === 24 && Number(m[4]) !== 0)) return null;
+  const open = Number(m[1]) * 60 + Number(m[2]);
+  let close = Number(m[3]) * 60 + Number(m[4]);
+  const t = (now || new Date());
+  let cur = t.getHours() * 60 + t.getMinutes();
+  if (close <= open) { close += 1440; if (cur < open) cur += 1440; }
+  return cur >= open && cur < close;
+}
 function candidateView() {
   return SPOTS.filter(supportsIntent).map(s => ({s, e: evaluate(s)})).filter(x => x.e.kind !== 'D');
 }
@@ -131,6 +174,106 @@ function photoUrl(p, width) { return `https://commons.wikimedia.org/wiki/Special
 function photoCredit(p) { return [p.credit, p.license].filter(Boolean).join(' / ') + ' · Wikimedia Commons'; }
 function cardPhotoHtml(spot) { const p = facilityPhoto(spot); if (!p) return ''; return `<div class="card-photo"><img src="${photoUrl(p, 300)}" alt="${esc(spot.facility)}の写真" loading="lazy" onerror="this.closest('.card-photo').style.display='none'"><span class="photo-credit">${esc(photoCredit(p))}</span></div>`; }
 function detailPhotoHtml(spot) { const p = facilityPhoto(spot); if (!p) return ''; return `<figure class="spot-photo"><img src="${photoUrl(p, 1000)}" alt="${esc(spot.facility)}の写真" loading="lazy" onerror="this.closest('.spot-photo').style.display='none'"><figcaption>写真：${esc(photoCredit(p))}</figcaption></figure>`; }
+/* スポット概要（2026-11-27 本人決定・敬語指定）: 確認済み（true / FREE 等）の事実からのみ
+   表示時に組み立てる。文章は保存しないので、事実が更新されれば概要も自動で追随する。
+   未確認・否定済みの項目には触れない（「ありません」とも書かない）。 */
+function spotSummaryText(spot) {
+  const f = spot.facts || {};
+  const T = k => f[k] === true;
+  const joinNouns = list => list.length <= 1 ? (list[0] || '') : list.slice(0, -1).join('・') + 'と' + list[list.length - 1];
+  const floorStr = String(spot.floor ?? '');
+  let floorPhrase = '', floorToken = '';
+  const fm = floorStr.match(/^(\d+)F$/), bm = floorStr.match(/^B(\d+)F$/);
+  if (fm) { floorPhrase = `の${fm[1]}階`; floorToken = fm[0]; }
+  else if (bm) { floorPhrase = `の地下${bm[1]}階`; floorToken = bm[0]; }
+  let name = String(spot.name ?? '');
+  if (floorToken && name.startsWith(floorToken)) {
+    const stripped = name.slice(floorToken.length).replace(/^[\s　]+/, '');
+    if (stripped) name = stripped; else floorPhrase = '';
+  }
+  const facility = String(spot.facility ?? '');
+  let s1;
+  if (facility && name && name !== facility && !name.startsWith(facility)) s1 = `${facility}${floorPhrase}にある${name}です。`;
+  else if (facility && name.startsWith(facility)) s1 = `${name}です。`;
+  else if (facility) s1 = `${facility}${floorPhrase}にあるスポットです。`;
+  else s1 = `${name}です。`;
+  const priceSentence = preferFee => {
+    const order = preferFee ? [f.fee_type, f.price] : [f.price, f.fee_type];
+    for (const v of order) {
+      if (v === 'FREE') return '利用は無料です。';
+      if (v === 'PAID') return '利用は有料です。';
+      if (v === 'PURCHASE_REQUIRED') return '利用には購入が必要です。';
+      if (v === 'CONDITIONAL_FREE') return '条件付きで無料です。';
+    }
+    if (f.purchase_required === true) return '利用には購入が必要です。';
+    return '';
+  };
+  const accessSentence = () => {
+    if (T('elevator_present') && T('step_free')) return 'エレベーターがあり、段差のない経路で到達できます。';
+    if (T('elevator_present')) return 'エレベーターがあります。';
+    if (T('step_free')) return '段差のない経路で到達できます。';
+    return '';
+  };
+  const body = [];
+  let price = '';
+  if (T('luggage_storage')) {
+    const st = f.storage_type;
+    body.push(st === 'LOCKER' ? 'コインロッカーが利用できます。'
+      : st === 'STAFFED' ? '有人預かりが利用できます。'
+      : st === 'BOTH' ? 'コインロッカーと有人預かりが利用できます。'
+      : '荷物預かりが利用できます。');
+    if (T('suitcase_ok')) body.push('スーツケースも預けられます。');
+    if (T('ic_payment')) body.push('ICカードで支払いができます。');
+    price = priceSentence(false);
+  } else if (T('workspace')) {
+    const usable = [];
+    if (T('wifi_available')) usable.push('Wi-Fi');
+    if (T('power_available')) usable.push('電源');
+    if (usable.length) body.push(`${joinNouns(usable)}が利用できます。`);
+    const canDo = [];
+    if (T('calls_allowed')) canDo.push('通話やWeb会議');
+    if (T('food_allowed')) canDo.push('飲食');
+    if (canDo.length) body.push(`${canDo.join('、')}も可能です。`);
+    if (!usable.length && !canDo.length) body.push('作業スペースが利用できます。');
+    price = priceSentence(true);
+  } else if (T('nursing_room') || T('diaper_table')) {
+    const items = [];
+    if (T('nursing_room')) items.push('授乳室');
+    if (T('diaper_table')) items.push('おむつ替え台');
+    if (T('accessible_toilet')) items.push('多目的トイレ');
+    if (T('kids_space')) items.push('キッズスペース');
+    body.push(`${joinNouns(items)}が利用できます。`);
+    if (T('male_accessible')) body.push('男性も利用できます。');
+    price = priceSentence(false);
+  } else if (T('kids_space')) {
+    body.push('キッズスペースが利用できます。');
+    const extras = [];
+    if (T('nursing_room')) extras.push('授乳室');
+    if (T('diaper_table')) extras.push('おむつ替え台');
+    if (extras.length) body.push(`${joinNouns(extras)}も利用できます。`);
+    price = priceSentence(false);
+  } else if (T('toilet')) {
+    const base = T('accessible_toilet') ? '多目的トイレ' : 'トイレ';
+    const extras = [];
+    if (T('diaper_table')) extras.push('おむつ替え台');
+    if (T('nursing_room')) extras.push('授乳室');
+    if (T('kids_space')) extras.push('キッズスペース');
+    body.push(extras.length ? `${base}と${joinNouns(extras)}が利用できます。` : `${base}が利用できます。`);
+    if (T('male_accessible') && T('diaper_table')) body.push('男性も利用できます。');
+    price = priceSentence(false);
+  } else if (T('seating')) {
+    if (T('eating_allowed') && T('outside_food_allowed')) body.push('座席があり、飲食や飲食物の持ち込みができます。');
+    else if (T('eating_allowed')) body.push('座席があり、飲食ができます。');
+    else if (T('outside_food_allowed')) body.push('座席があり、飲食物の持ち込みができます。');
+    else body.push('座席があり、休憩に利用できます。');
+    // 購入が必要（確認済み）のスポットでは「無料で座れます」を出さない（両立データが実在するため、強い利用条件を優先する）
+    price = T('purchase_required') ? '利用には購入が必要です。' : T('free_seating') ? '無料で座れます。' : priceSentence(false);
+  } else {
+    price = priceSentence(false);
+  }
+  return [s1, ...body, accessSentence(), price].filter(Boolean).join('');
+}
+function detailSummaryHtml(spot) { const t = spotSummaryText(spot); return t ? `<p class="spot-summary">${esc(t)}</p>` : ''; }
 function sortPoint(spot) {
   const at = entrance(spot);
   if (at) return at;
@@ -192,16 +335,19 @@ function card(spot, result) {
   const important = key === 'rest' ? ['price','indoor','purchaseNo','seating'] : key === 'eat' ? ['seating','eating','outsideFood','price','indoor'] : key === 'diaper' ? ['diaper','male'] : key === 'kids' ? ['kids','price','indoor','age'] : key === 'nursing' ? ['nursing'] : key === 'work' ? ['wifi','power','calls','fee'] : key === 'storage' ? ['suitcase','icpay'] : ['toilet'];
   const badge = result.kind === 'A' ? '条件に一致' : result.kind === 'B' ? '一部条件を確認できません' : '条件を広げると候補';
   const unresolved = result.missing?.length ? condText(result.missing[0].key, result.missing[0].v) + (result.missing.length > 1 ? ' ほか' : '') : '';
-  return `<article id="card-${esc(spot.id)}" data-spot-id="${esc(spot.id)}" class="card state-${result.kind}"><div class="card-row"><div class="card-text"><div class="badge">${badge}</div><span class="official-mark">✓ 公式情報のみ</span><h3>${esc(spot.name)}</h3><p class="facility">${esc(spot.facility)}</p>${unresolved ? `<p class="alert">${esc(unresolved)}</p>` : ''}<div class="facts">${important.map(k => `<span class="fact ${condValue(spot,k)}">${esc(condText(k,condValue(spot,k)))}</span>`).join('')}</div><p class="meta"><span class="dist">${esc(distanceLabel(spot))}</span>${spot.floor ? `<span class="floor">${esc(String(spot.floor))}</span>` : ''}</p></div>${cardPhotoHtml(spot)}</div><div class="card-actions"><button class="primary" data-action="detail" data-id="${esc(spot.id)}">詳しく見る</button>${entrance(spot) ? `<button class="secondary" data-action="focusMap" data-id="${esc(spot.id)}">地図で見る</button>` : ''}</div></article>`;
+  return `<article id="card-${esc(spot.id)}" data-spot-id="${esc(spot.id)}" class="card state-${result.kind}"><div class="card-row"><div class="card-text"><div class="badge">${badge}</div>${openNow(spot) === true ? '<span class="open-now">● いま使える</span>' : ''}<span class="official-mark">✓ 公式情報のみ</span><h3>${esc(spot.name)}</h3><p class="facility">${esc(spot.facility)}</p>${unresolved ? `<p class="alert">${esc(unresolved)}</p>` : ''}<div class="facts">${important.map(k => `<span class="fact ${condValue(spot,k)}">${esc(condText(k,condValue(spot,k)))}</span>`).join('')}</div><p class="meta"><span class="dist">${esc(distanceLabel(spot))}</span>${spot.floor ? `<span class="floor">${esc(String(spot.floor))}</span>` : ''}</p></div>${cardPhotoHtml(spot)}</div><div class="card-actions"><button class="primary" data-action="detail" data-id="${esc(spot.id)}">詳しく見る</button>${(entrance(spot) || (typeof FACILITY_POINTS !== 'undefined' && FACILITY_POINTS[spot.facility])) ? `<button class="secondary" data-action="focusMap" data-id="${esc(spot.id)}">地図で見る</button>` : ''}</div></article>`;
 }
 function quickStrip() {
   const keys = QUICK_CONDS[state.intent] || [];
   return keys.map(k => { const mode = state.filters[k] || 'off'; const relaxed = mode === 'must' && state.relaxed.has(k); const cur = relaxed ? '未確認も含む' : mode === 'must' ? '必須' : mode === 'prefer' ? 'できれば' : '指定なし'; const next = relaxed ? 'できれば' : mode === 'must' ? '未確認も含む' : mode === 'prefer' ? '指定なし' : '必須'; const label = CONDS[k].label + (k === 'walk' ? ` ${state.walkMinutes}分` : ''); return `<button class="quick-button mode-${mode}${relaxed ? ' relaxed' : ''}" data-action="quickCondition" data-key="${k}" aria-label="${esc(label)}：${cur}。タップで${next}に変更"><strong>${esc(label)}</strong><span>${cur}</span></button>`; }).join('');
 }
 const SECTION_CAP = 100;
+/* 初期表示は各セクション上位8件（2026-11-27 本人採用）。残りは「もっと見る」で
+   SECTION_CAP 件ずつ広げる。 */
+const INITIAL_CAP = 8;
 function sectionCaps() {
   const sig = JSON.stringify([state.intent, state.filters, state.walkMinutes, [...state.relaxed].sort(), state.origin ? [state.origin.lat.toFixed(5), state.origin.lon.toFixed(5)] : null]);
-  if (state._capSig !== sig) { state._capSig = sig; state._caps = { a: SECTION_CAP, b: SECTION_CAP, c: SECTION_CAP }; }
+  if (state._capSig !== sig) { state._capSig = sig; state._caps = { a: INITIAL_CAP, b: INITIAL_CAP, c: INITIAL_CAP }; }
   return state._caps;
 }
 function sectionHtml(list, capKey, heading) {
@@ -211,14 +357,31 @@ function sectionHtml(list, capKey, heading) {
   if (list.length > cap) h += `<div class="options"><button class="option" data-action="showMore" data-section="${capKey}">もっと見る（あと${list.length - cap}件）→</button></div>`;
   return h + '</section>';
 }
+/* 徒歩分数を広げたときに「条件に一致」が何件増えるか（2026-11-27 UI改善セット）。
+   判定は state.walkMinutes を一時的に差し替えて数え直し、すぐ元に戻す。 */
+function widenInfo(aCount) {
+  if (state.filters.walk === 'off' || state.walkMinutes >= 15) return null;
+  const next = state.walkMinutes === 5 ? 10 : 15;
+  const cur = state.walkMinutes;
+  state.walkMinutes = next;
+  let n = 0;
+  try { n = candidateView().filter(x => x.e.kind === 'A').length; } finally { state.walkMinutes = cur; }
+  return n > aCount ? { next, add: n - aCount } : null;
+}
 function renderResults() {
   const i = INTENTS[state.intent], evaluated = candidateView();
   const a = sortCandidates(evaluated.filter(x => x.e.kind === 'A')), b = sortCandidates(evaluated.filter(x => x.e.kind === 'B')), c = sortCandidates(evaluated.filter(x => x.e.kind === 'C')), noTrusted = !a.length;
+  cardIndex = new Map();
+  a.forEach((x, idx) => cardIndex.set(x.s.id, { sec: 'a', idx }));
+  b.forEach((x, idx) => cardIndex.set(x.s.id, { sec: 'b', idx }));
+  c.forEach((x, idx) => cardIndex.set(x.s.id, { sec: 'c', idx }));
   const total = a.length + b.length + c.length;
   const scopeLabel = state.filters.walk === 'off' ? '全エリア' : state.filters.walk === 'prefer' ? `全エリア（徒歩${state.walkMinutes}分を目安）` : `徒歩${state.walkMinutes}分圏内`;
   const intentItems = Object.entries(INTENTS).filter(([id]) => !state.hiddenIntents.has(id)).map(([id, it]) => `<button class="intent-chip${id === state.intent ? ' active' : ''}" data-action="intent" data-id="${id}" aria-pressed="${id === state.intent}">${it.icon} ${esc(it.label)}</button>`).join('');
-  let html = `<header class="top results-top"><button class="icon-btn" data-action="back" aria-label="戻る">←</button><div class="top-controls"><button class="intent-select" data-action="intentMenu" aria-expanded="${intentMenuOpen}" aria-haspopup="true" aria-label="目的を切り替える（現在：${esc(i.label)}）">${i.icon} ${esc(i.label)}<span class="caret" aria-hidden="true">▾</span></button><button class="top-btn" data-action="manualOrigin">地点</button><button class="top-btn" data-action="filter">条件</button></div><div class="intent-menu" id="intentMenu"${intentMenuOpen ? '' : ' hidden'} role="group" aria-label="目的を選ぶ">${intentItems}</div></header><div class="results-stage"><div id="map" class="map results-map" aria-label="周辺Spotの地図"></div><div class="options-bar"><div class="chips-strip">${quickStrip()}${stripChips()}</div></div>${state.origin ? `<button class="locate-btn" data-action="recenter" aria-label="出発地点に戻る" title="出発地点に戻る">◎</button>` : ''}`;
-  html += `<div class="sheet${sheetOpen ? ' open' : ''}" id="resultSheet"><button class="sheet-handle" data-action="toggleSheet" aria-expanded="${sheetOpen}"><span class="grip" aria-hidden="true"></span><span class="sheet-count">${i.icon} ${esc(i.label)}：${a.length}件（条件に一致・${scopeLabel}）／未確認の候補 ${b.length + c.length}件</span><span class="sheet-toggle">${sheetOpen ? '閉じる' : '一覧を広げる'}</span></button><div class="sheet-body" id="sheetBody"><div class="result-head"><div><small>出発：${esc(originLabel())}</small><small class="count-note">「必須」の条件が確認できた場所は「条件に一致」に、確認できていない場所は下の候補に出ます。</small></div></div>`;
+  let html = `<header class="top results-top"><button class="icon-btn" data-action="back" aria-label="戻る">←</button><div class="top-controls"><button class="intent-select" data-action="intentMenu" aria-expanded="${intentMenuOpen}" aria-haspopup="true" aria-label="目的を切り替える（現在：${esc(i.label)}）">${i.icon} ${esc(i.label)}<span class="caret" aria-hidden="true">▾</span></button><button class="top-btn" data-action="manualOrigin">地点</button><button class="top-btn" data-action="filter">条件</button></div><div class="intent-menu" id="intentMenu"${intentMenuOpen ? '' : ' hidden'} role="group" aria-label="目的を選ぶ">${intentItems}</div></header><div class="results-stage"><div id="map" class="map results-map" aria-label="周辺Spotの地図"></div><div class="offscreen-guides" id="offscreenGuides"></div><div class="options-bar"><div class="chips-strip">${quickStrip()}${stripChips()}</div></div>${state.origin ? `<button class="locate-btn" data-action="recenter" aria-label="出発地点に戻る" title="出発地点に戻る">◎</button>` : ''}`;
+  const wi = a.length <= 3 ? widenInfo(a.length) : null;
+  const walkStepper = `<div class="walk-stepper" role="group" aria-label="徒歩の分数を変える"><span class="walk-stepper-label">徒歩</span>${[5, 10, 15].map(n => `<button class="walk-step${n === state.walkMinutes ? ' active' : ''}" data-action="walkSet" data-minutes="${n}" aria-pressed="${n === state.walkMinutes}">${n}分</button>`).join('')}</div>`;
+  html += `<div class="sheet${sheetOpen ? ' open' : ''}" id="resultSheet"><button class="sheet-handle" data-action="toggleSheet" aria-expanded="${sheetOpen}"><span class="grip" aria-hidden="true"></span><span class="sheet-count">${i.icon} ${esc(i.label)}：${a.length}件（条件に一致・${scopeLabel}）／未確認の候補 ${b.length + c.length}件</span><span class="sheet-toggle">${sheetOpen ? '閉じる' : '一覧を広げる'}</span></button><div class="sheet-body" id="sheetBody"><div class="result-head"><div><small>出発：${esc(originLabel())}</small><small class="count-note">「必須」の条件が確認できた場所は「条件に一致」に、確認できていない場所は下の候補に出ます。</small></div>${walkStepper}</div>${wi ? `<div class="options widen-hint"><button class="option" data-action="walkSet" data-minutes="${wi.next}">徒歩${wi.next}分に広げると、条件に一致があと${wi.add}件あります →</button></div>` : ''}`;
   if (!total) html += `<section class="zero"><h2>条件に合う場所が見つかりませんでした。</h2><p>条件を緩めるか、リセットして探し直してください。</p>${relaxOptions()}<div class="options"><button class="option" data-action="resetFilters">条件をリセットする →</button></div></section>`;
   else {
     if (noTrusted) html += `<section class="zero"><h2>すべての条件を確認できる場所は見つかりませんでした。</h2><p>未確認の候補は別に表示します。条件を広げる場合は、変更内容を選んでください。</p>${relaxOptions()}</section>`;
@@ -248,10 +411,83 @@ renderDetail = function () {
   if (!spot) return renderResults();
   let html = wp8Detail();
   html = html.replace(`<p>${esc(spot.walk.label)}（施設入口まで。館内移動は含みません）</p>`, `<p>${esc(distanceLabel(spot))}</p>`);
+  if (!entrance(spot) && walkPoint(spot)) {
+    const dp = `<p>${esc(distanceLabel(spot))}</p>`;
+    if (html.includes(dp)) html = html.replace(dp, dp + '<p class="muted">入口は未確認：入口の正確な位置は公式情報で確認できていないため、距離は施設の場所までの目安です。</p>');
+  }
   const titleEnd = `<p>${esc(spot.facility)}</p></div>`;
-  if (html.includes(titleEnd)) html = html.replace(titleEnd, titleEnd + detailPhotoHtml(spot));
+  if (html.includes(titleEnd)) html = html.replace(titleEnd, titleEnd + detailSummaryHtml(spot) + detailPhotoHtml(spot));
   return html;
 };
+/* ピンの選択状態（2026-11-27 UI改善セット）: 選択中は輪郭だけでなく
+   大きさと不透明度も変える（reading-notes の作法）。色分けは維持する。 */
+function selectFacilityMarker(facility) {
+  for (const [f, m] of facilityMarkers) {
+    if (!m.setStyle) continue;
+    const base = markerBaseStyles.get(f);
+    if (!base) continue;
+    if (f === facility) { m.setStyle({ radius: base.radius + 6, weight: base.weight + 2, fillOpacity: 1 }); if (m.bringToFront) m.bringToFront(); }
+    else m.setStyle({ radius: base.radius, weight: base.weight, fillOpacity: base.fillOpacity });
+  }
+}
+function highlightCard(id, scroll) {
+  state.selectedSpotId = id;
+  const cardEl = document.getElementById(`card-${id}`);
+  if (!cardEl) return;
+  document.querySelectorAll('.selected-card').forEach(el => el.classList.remove('selected-card'));
+  cardEl.classList.add('selected-card');
+  cardEl.classList.remove('pulse'); void cardEl.offsetWidth; cardEl.classList.add('pulse');
+  if (scroll) cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+/* 画面外ガイド（2026-11-27 本人提案・仕様確定）: 初期表示の上位8件（条件に一致）のうち
+   地図の表示範囲の外にある施設について、画面端に矢印＋「あと○m」を出す。
+   タップでそのスポットへ地図が移動する。対象は8件の施設だけ（全部のピンには出さない）。 */
+function guideDistanceLabel(d) { return d < 1000 ? `あと約${Math.max(10, Math.round(d / 10) * 10)}m` : `あと約${(d / 1000).toFixed(1)}km`; }
+function updateOffscreenGuides() {
+  if (!mapInstance || typeof mapInstance.latLngToContainerPoint !== 'function' || typeof mapInstance.getSize !== 'function') return;
+  if (typeof document === 'undefined' || typeof document.createElement !== 'function' || typeof document.getElementById !== 'function') return;
+  const box = document.getElementById('offscreenGuides');
+  const mapNode = document.getElementById('map');
+  if (!box || !mapNode || !mapNode.getBoundingClientRect) return;
+  box.innerHTML = '';
+  if (!guideTargets.length) return;
+  const size = mapInstance.getSize();
+  const center = mapInstance.getCenter();
+  const mr = mapNode.getBoundingClientRect(), br = box.getBoundingClientRect();
+  const offX = (mr.left || 0) - (br.left || 0), offY = (mr.top || 0) - (br.top || 0);
+  let yMax = size.y - 42;
+  const sheet = document.getElementById('resultSheet');
+  if (sheet && sheet.getBoundingClientRect) { const stop = (sheet.getBoundingClientRect().top || 0) - (mr.top || 0); if (stop > 80 && stop < yMax) yMax = stop - 34; }
+  const ARROWS = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'];
+  // Pills are wide (~150px), so clamp the center far enough in that the whole
+  // pill stays inside the map, keep clear of the chips row at the top, and
+  // de-collide pills that would land on top of each other (same direction,
+  // similar distance happens with neighbouring facilities).
+  const MX = 80, MY = 76, placed = [];
+  for (const g of guideTargets) {
+    const pt = mapInstance.latLngToContainerPoint([g.at.lat, g.at.lon]);
+    if (pt.x >= 0 && pt.x <= size.x && pt.y >= 0 && pt.y <= size.y) continue;
+    let cx = size.x > 2 * MX ? Math.max(MX, Math.min(size.x - MX, pt.x)) : size.x / 2;
+    let cy = Math.max(MY, Math.min(yMax, pt.y));
+    for (let tries = 0; tries < 8; tries++) {
+      if (!placed.some(p => Math.abs(p.x - cx) < 140 && Math.abs(p.y - cy) < 40)) break;
+      cy += 42;
+      if (cy > yMax) { cy = Math.max(MY, Math.min(yMax, pt.y)); cx = Math.min(size.x - MX, cx + 148); }
+    }
+    placed.push({ x: cx, y: cy });
+    const ang = Math.atan2(pt.y - size.y / 2, pt.x - size.x / 2);
+    const arrow = ARROWS[Math.round(ang / (Math.PI / 4)) & 7];
+    const dist = guideDistanceLabel(haversine({ lat: center.lat, lon: center.lng }, g.at));
+    const btn = document.createElement('button');
+    btn.className = 'offscreen-guide';
+    btn.style.left = (offX + cx) + 'px';
+    btn.style.top = (offY + cy) + 'px';
+    btn.setAttribute('aria-label', `${g.facility}は画面の外、${dist}の方向にあります`);
+    btn.innerHTML = `<span class="guide-arrow" aria-hidden="true">${arrow}</span><span class="guide-dist">${dist}</span>`;
+    btn.addEventListener('click', () => { if (mapInstance) { mapInstance.panTo([g.at.lat, g.at.lon]); selectFacilityMarker(g.facility); const mk = facilityMarkers.get(g.facility); if (mk && mk.openPopup) mk.openPopup(); } });
+    box.appendChild(btn);
+  }
+}
 function renderRoute() {
   const spot = SPOTS.find(s => s.id === state.spotId), at = entrance(spot);
   const url = at ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(at.lat + ',' + at.lon)}&travelmode=walking` : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(spot.facility + ' ' + spot.location)}&travelmode=walking`;
@@ -288,13 +524,44 @@ function initMap() {
     const color=items.some(x=>x.e.kind==='A')?'#1f6d58':items.some(x=>x.e.kind==='B')?'#a76617':'#546ba1';
     const spotsHtml=items.map(x=>`<button class="map-spot" data-action="detail" data-id="${esc(x.s.id)}">${esc(x.s.name)} · ${x.e.kind==='A'?'条件に一致':x.e.kind==='B'?'一部未確認':'条件を広げると候補'}（タップで詳細）</button>`).join('');
     const marker=ent
-      ? L.circleMarker([at.lat,at.lon],{radius:11,color,fillColor:color,fillOpacity:.82,weight:2}).addTo(mapInstance)
-      : L.circleMarker([at.lat,at.lon],{radius:8,color,fillColor:color,fillOpacity:.45,weight:1.5}).addTo(mapInstance);
+      ? L.circleMarker([at.lat,at.lon],{radius:16,color,fillColor:color,fillOpacity:.88,weight:3}).addTo(mapInstance)
+      : L.circleMarker([at.lat,at.lon],{radius:12,color,fillColor:color,fillOpacity:.55,weight:2.5}).addTo(mapInstance);
     marker.bindPopup(ent
       ? `<strong>${esc(facility)} 入口</strong><br>${spotsHtml}`
-      : `<strong>${esc(facility)}</strong><br><span class="pin-note">施設の場所（入口は未確認）</span><br>${spotsHtml}`);
+      : `<strong>${esc(facility)}</strong><br><span class="pin-note">施設の場所（入口は未確認）</span><br><span class="pin-note">入口の正確な位置は公式情報で確認できていません</span><br>${spotsHtml}`);
     facilityMarkers.set(facility,marker);
+    markerBaseStyles.set(facility, ent ? { radius: 16, weight: 3, fillOpacity: .88 } : { radius: 12, weight: 2.5, fillOpacity: .55 });
+    if (marker.on) marker.on('click', () => {
+      selectFacilityMarker(facility);
+      const first = items.map(x => x.s.id).find(id => document.getElementById(`card-${id}`));
+      if (first) { highlightCard(first, true); return; }
+      /* 対象カードが初期表示の外にある場合は、そのセクションを対象の位置まで
+         広げて再描画してからハイライトする。再描画は Leaflet のイベント処理が
+         終わってから行う（処理中の地図破棄を避ける）。 */
+      const secRank = { a: 0, b: 1, c: 2 };
+      const target = items.map(x => cardIndex.get(x.s.id)).filter(Boolean)
+        .sort((p, q) => (secRank[p.sec] - secRank[q.sec]) || (p.idx - q.idx))[0];
+      if (!target) return;
+      setTimeout(() => {
+        const caps = sectionCaps();
+        if (caps[target.sec] <= target.idx) caps[target.sec] = target.idx + 1;
+        render();
+        selectFacilityMarker(facility);
+        const shown = items.map(x => x.s.id).find(id => document.getElementById(`card-${id}`));
+        if (shown) highlightCard(shown, true);
+      }, 0);
+    });
   }
+  guideTargets = [];
+  const seenFac = new Set();
+  for (const x of sortCandidates(candidateView().filter(x => x.e.kind === 'A')).slice(0, INITIAL_CAP)) {
+    if (seenFac.has(x.s.facility)) continue;
+    seenFac.add(x.s.facility);
+    const at = entrance(x.s) || (typeof FACILITY_POINTS !== 'undefined' ? FACILITY_POINTS[x.s.facility] : null);
+    if (at) guideTargets.push({ facility: x.s.facility, at });
+  }
+  updateOffscreenGuides();
+  mapInstance.on('move', updateOffscreenGuides);
 }
 function announceScreen() {
   if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
@@ -318,7 +585,7 @@ function showToast(message) {
   showToast._timer = setTimeout(() => { if (t.parentNode) t.parentNode.removeChild(t); }, 1800);
 }
 render = function () {
-  if (mapInstance) { mapInstance.remove(); mapInstance=null; facilityMarkers.clear(); }
+  if (mapInstance) { mapInstance.remove(); mapInstance=null; facilityMarkers.clear(); markerBaseStyles.clear(); guideTargets = []; }
   if (state.screen === 'settings') { app.innerHTML=renderSettings(); window.scrollTo(0,0); }
   else if (state.screen === 'origin' || state.screen === 'route') { app.innerHTML=state.screen==='origin'?renderOrigin():renderRoute(); window.scrollTo(0,0); }
   else wp8Render();
@@ -344,8 +611,10 @@ app.addEventListener('click', ev => {
   const {action:a,id,key}=btn.dataset;
   if (a==='intent' && state.screen==='home' && !state.origin) { ev.stopImmediatePropagation(); pendingIntent = id; state.originMessage=''; render(); return; }
   if (a==='originPromptCancel') { ev.stopImmediatePropagation(); const backTo = pendingIntent; pendingIntent = null; render(); if (backTo && typeof document !== 'undefined' && typeof document.querySelector === 'function') { const b = document.querySelector(`button.intent[data-id="${backTo}"]`); if (b && typeof b.focus === 'function') b.focus(); } return; }
-  if (!['geolocate','manualOrigin','preset','selectCard','focusMap','goUse','usageConfirm','toggleSheet','resetFilters','intentMenu','recenter','showMore'].includes(a)) return;
+  if (a==='detail' && state.screen==='results') { const b=document.getElementById('sheetBody'); if (b && typeof b.scrollTop==='number') { const c=document.getElementById(`card-${id}`); let delta=null; if (c && c.getBoundingClientRect && b.getBoundingClientRect) { const d=c.getBoundingClientRect().top - b.getBoundingClientRect().top; if (Number.isFinite(d)) delta=d; } state.resultsView = Object.assign(state.resultsView || {}, { intent: state.intent, scroll: b.scrollTop, anchorId: id, anchorDelta: delta }); } return; }
+  if (!['geolocate','manualOrigin','preset','selectCard','focusMap','goUse','usageConfirm','toggleSheet','resetFilters','intentMenu','recenter','showMore','walkSet'].includes(a)) return;
   ev.stopImmediatePropagation();
+  if (a==='walkSet') { const n = Number(btn.dataset.minutes); if ([5, 10, 15].includes(n)) state.walkMinutes = n; return render(); }
   if (a==='showMore') { const caps = sectionCaps(); const sec = btn.dataset.section; if (caps[sec]) caps[sec] += SECTION_CAP; return render(); }
   if (a==='intentMenu') { intentMenuOpen = !intentMenuOpen; const menu = document.getElementById('intentMenu'); if (menu) { menu.hidden = !intentMenuOpen; btn.setAttribute('aria-expanded', String(intentMenuOpen)); } return; }
   if (a==='toggleSheet') { if (suppressSheetClick) return; sheetOpen=!sheetOpen; const sheet=document.getElementById('resultSheet'); if (sheet) { sheet.classList.toggle('open',sheetOpen); btn.setAttribute('aria-expanded',String(sheetOpen)); const label=btn.querySelector('.sheet-toggle'); if (label) label.textContent=sheetOpen?'閉じる':'一覧を広げる'; } return; }
@@ -354,8 +623,8 @@ app.addEventListener('click', ev => {
   if (a==='geolocate') return useGeolocation();
   if (a==='manualOrigin') return enter('origin');
   if (a==='preset') { const at=FACILITY_ENTRANCES[key]; if (!at) return; state.origin={kind:'preset',lat:at.lat,lon:at.lon,label:MANUAL_PRESETS.find(p=>p.facility===key)?.label||key,selectedAt:new Date().toISOString()}; state.originMessage='出発地点を設定しました。'; if (!proceedPendingIntent()) back(); return; }
-  if (a==='selectCard') { state.selectedSpotId=id; const cardEl=document.getElementById(`card-${id}`); if (cardEl) { document.querySelectorAll('.selected-card').forEach(el=>el.classList.remove('selected-card')); cardEl.classList.add('selected-card'); cardEl.classList.remove('pulse'); void cardEl.offsetWidth; cardEl.classList.add('pulse'); cardEl.scrollIntoView({behavior:'smooth',block:'center'}); } return; }
-  if (a==='focusMap') { const spot=SPOTS.find(s=>s.id===id), marker=spot&&facilityMarkers.get(spot.facility); state.selectedSpotId=id; const cardEl=document.getElementById(`card-${id}`); if (cardEl) { document.querySelectorAll('.selected-card').forEach(el=>el.classList.remove('selected-card')); cardEl.classList.add('selected-card'); cardEl.classList.remove('pulse'); void cardEl.offsetWidth; cardEl.classList.add('pulse'); } if (marker&&mapInstance) { marker.openPopup(); mapInstance.panTo(marker.getLatLng()); document.getElementById('map').scrollIntoView({behavior:'smooth',block:'center'}); } return; }
+  if (a==='selectCard') { highlightCard(id, true); const spot=SPOTS.find(s=>s.id===id); if (spot) selectFacilityMarker(spot.facility); return; }
+  if (a==='focusMap') { const spot=SPOTS.find(s=>s.id===id), marker=spot&&facilityMarkers.get(spot.facility); highlightCard(id, false); if (spot) selectFacilityMarker(spot.facility); if (marker&&mapInstance) { marker.openPopup(); mapInstance.panTo(marker.getLatLng()); document.getElementById('map').scrollIntoView({behavior:'smooth',block:'center'}); } return; }
   if (a==='goUse') return enter('route');
   if (a==='usageConfirm') { state.confirmation=null; return enter('confirm'); }
 }, true);
