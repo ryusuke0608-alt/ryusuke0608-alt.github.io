@@ -1,6 +1,6 @@
 const INTENTS = {
-  toilet:{icon:'🚻',label:'トイレ',sub:'多目的トイレ・おむつ台',conditions:{toilet:'must',walk:'must'}},
-  rest:{icon:'🪑',label:'休みたい',sub:'無料で座れる場所',conditions:{price:'must',indoor:'must',purchaseNo:'must',seating:'must',walk:'must'}},
+  toilet:{icon:'🚻',label:'トイレに行きたい',sub:'多目的トイレ・おむつ台',conditions:{toilet:'must',walk:'must'}},
+  rest:{icon:'🪑',label:'休みたい',sub:'座って休める場所',conditions:{price:'must',indoor:'must',purchaseNo:'must',seating:'must',walk:'must'}},
   eat:{icon:'🍙',label:'食べたい',sub:'飲食スペース・フードコート',conditions:{seating:'must',eating:'must',outsideFood:'must',price:'prefer',indoor:'prefer',walk:'must'}},
   nursing:{icon:'🍼',label:'授乳したい',sub:'授乳室・ベビー休憩室',conditions:{nursing:'must',walk:'must'}},
   diaper:{icon:'🚼',label:'おむつを替えたい',sub:'交換台のある場所',conditions:{diaper:'must',male:'must',walk:'must'}},
@@ -31,7 +31,7 @@ function reportUrl(spot){return `${FORM_BASE}?entry.259277641=${encodeURICompone
 const copy = x => JSON.parse(JSON.stringify(x));
 const esc = x => String(x ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function enter(screen){state.history.push({screen:state.screen,spotId:state.spotId});state.screen=screen;history.pushState({screen},'',`#${screen}`);render();}
-function back(){const prev=state.history.pop();if(prev){state.screen=prev.screen;state.spotId=prev.spotId;render();}else{state.screen='home';render();}}
+function back(){const prev=state.history.pop();if(prev){state.screen=prev.screen;state.spotId=prev.spotId;}else{state.screen='home';}if(history.replaceState)history.replaceState({screen:state.screen},'',`#${state.screen}`);render();}
 window.addEventListener('popstate',()=>back());
 function chooseIntent(intent){state.intent=intent;state.filters=copy(INTENTS[intent].conditions);state.priceMode=state.filters.price==='must'?'freeOnly':state.filters.price==='prefer'?'freePrefer':'includePaid';state.walkMinutes=10;state.relaxed=new Set();state.history=[{screen:'home',spotId:null}];state.screen='results';history.pushState({screen:'results'},'','#results');render();}
 function supportsIntent(spot){const f=spot.facts;switch(state.intent){case 'rest':case 'eat':return f.seating===true;case 'diaper':return f.diaper_table===true;case 'kids':return f.kids_space===true;case 'nursing':return f.nursing_room===true;case 'toilet':return f.toilet===true;case 'work':return f.workspace===true;case 'storage':return f.luggage_storage===true;default:return false;}}
@@ -74,7 +74,7 @@ function relaxOptions(){const options=[];for(const [key,mode] of Object.entries(
   return options.length?`<div class="options">${options.join('')}</div>`:'<p class="muted">追加で広げられる条件はありません。</p>';
 }
 function evaluateWithRelax(spot,key){const v=condValue(spot,key);if(v==='no')return 'D';for(const [k,mode] of Object.entries(state.filters)){if(mode!=='must'||k===key||state.relaxed.has(k))continue;const other=condValue(spot,k);if(other==='no'||other==='unknown'||other==='conditional')return 'B';}return 'B';}
-function renderFilter(){const keys=Object.keys(CONDS).filter(k=>Object.prototype.hasOwnProperty.call(INTENTS[state.intent].conditions,k)||['price','indoor','purchaseNo','seating','walk'].includes(k));const filterRow=k=>`<label class="filter-row"><span>${esc(CONDS[k].label)}</span><select data-filter="${k}"><option value="off" ${state.draft.filters[k]==='off'||!state.draft.filters[k]?'selected':''}>指定しない</option><option value="must" ${state.draft.filters[k]==='must'?'selected':''}>必須</option><option value="prefer" ${state.draft.filters[k]==='prefer'?'selected':''}>できれば</option></select></label>`;return `${renderHeader('条件を選ぶ')}<div class="pad"><button class="secondary" data-action="resetDraft">条件を初期値に戻す</button></div><p class="muted pad">「必須」は確認できた候補を優先します。「できれば」は未確認でも候補に残します。</p><section class="filter-section"><h2>利用料金</h2><div class="radio-row">${[['freeOnly','無料のみ'],['freePrefer','無料優先'],['includePaid','有料も含む']].map(([v,t])=>`<label><input type="radio" name="priceMode" value="${v}" ${state.draft.priceMode===v?'checked':''}>${t}</label>`).join('')}</div></section><section class="filter-section"><h2>条件</h2>${keys.filter(k=>k!=='price').map(filterRow).join('')}<label class="filter-row"><span>徒歩範囲</span><select id="walkRange">${[5,10,15].map(n=>`<option value="${n}" ${state.draft.walkMinutes===n?'selected':''}>${n}分</option>`).join('')}</select></label></section><section class="filter-section"><h2>車椅子・ベビーカー</h2>${['stepFree','elevator','accessibleToilet'].map(filterRow).join('')}</section><div class="sticky"><button class="primary" data-action="applyFilter">この条件で探す</button></div>`;}
+function renderFilter(){const keys=Object.keys(CONDS).filter(k=>Object.prototype.hasOwnProperty.call(INTENTS[state.intent].conditions,k)||['price','indoor','purchaseNo','seating','walk'].includes(k));const rowLabel=k=>k==='walk'?'徒歩範囲の扱い':CONDS[k].label;const filterRow=k=>`<label class="filter-row"><span>${esc(rowLabel(k))}</span><select data-filter="${k}"><option value="off" ${state.draft.filters[k]==='off'||!state.draft.filters[k]?'selected':''}>指定しない</option><option value="must" ${state.draft.filters[k]==='must'?'selected':''}>必須</option><option value="prefer" ${state.draft.filters[k]==='prefer'?'selected':''}>できれば</option></select></label>`;return `${renderHeader('条件を選ぶ')}<div class="pad"><button class="secondary" data-action="resetDraft">条件を初期値に戻す</button></div><p class="muted pad">条件を「必須」にすると、その条件を確認できた場所が「条件に一致」として上に並び、確認できていない場所は下の「一部条件を確認できない候補」に出ます（候補から消えるわけではありません）。「できれば」は、合う場所を並び順で優遇します。</p><section class="filter-section"><h2>利用料金</h2><div class="radio-row">${[['freeOnly','無料のみ'],['freePrefer','無料優先'],['includePaid','有料も含む']].map(([v,t])=>`<label><input type="radio" name="priceMode" value="${v}" ${state.draft.priceMode===v?'checked':''}>${t}</label>`).join('')}</div></section><section class="filter-section"><h2>条件</h2>${keys.filter(k=>k!=='price').map(filterRow).join('')}<label class="filter-row"><span>徒歩の分数</span><select id="walkRange">${[5,10,15].map(n=>`<option value="${n}" ${state.draft.walkMinutes===n?'selected':''}>${n}分</option>`).join('')}</select></label></section><section class="filter-section"><h2>車椅子・ベビーカー</h2>${['stepFree','elevator','accessibleToilet'].map(filterRow).join('')}</section><div class="sticky"><button class="primary" data-action="applyFilter">この条件で探す</button></div>`;}
 function factCopy(k,v){const label=ATTRS[k]||k;if(v===null||v===undefined||v==='UNKNOWN')return `${unknownName(k)}：未確認`;if(v==='FREE')return '無料';if(v==='CONDITIONAL_FREE')return '条件付き無料';if(v==='PURCHASE_REQUIRED')return '購入が必要';if(v==='PAID')return '有料';const yes={seating:'座席あり',free_seating:'無料で座れる',indoor:'屋内',purchase_required:'購入が必要',eating_allowed:'飲食可能',outside_food_allowed:'持込飲食可能',kids_space:'キッズスペースあり',diaper_table:'おむつ交換台あり',male_accessible:'男性も利用可能',nursing_room:'授乳室あり',toilet:'トイレあり',accessible_toilet:'多目的トイレあり',elevator_present:'エレベーターあり',step_free:'段差のない経路で到達できます',wifi_available:'Wi-Fiあり',power_available:'電源あり',calls_allowed:'通話・Web会議OK',food_allowed:'飲食可能',suitcase_ok:'スーツケース可',ic_payment:'IC支払い可'};const no={seating:'座席なし',free_seating:'無料では座れない',indoor:'屋内ではない',purchase_required:'購入不要',eating_allowed:'飲食不可',outside_food_allowed:'持込飲食不可',kids_space:'キッズスペースなし',diaper_table:'おむつ交換台なし',male_accessible:'男性は利用不可',nursing_room:'授乳室なし',toilet:'トイレなし',accessible_toilet:'多目的トイレなし',elevator_present:'エレベーターなし',step_free:'段差なしの経路では到達できません',wifi_available:'Wi-Fiなし',power_available:'電源なし',calls_allowed:'通話・Web会議不可',food_allowed:'飲食不可',suitcase_ok:'スーツケース不可',ic_payment:'IC支払い不可'};return v===true?(yes[k]||`${label}：はい`):(no[k]||`${label}：いいえ`);}
 function candidateReasonText(spot,key){
   if(key==='walk')return spot.walk.direct?'駅直結 ✓':`徒歩${state.walkMinutes}分以内 ✓`;
@@ -84,6 +84,16 @@ function candidateReasonText(spot,key){
 function unknownQuestion(k){
   const questions={free_seating:'無料で座れるか',purchase_required:'購入不要か',eating_allowed:'飲食可能か',outside_food_allowed:'持込飲食可能か',price:'利用料金',age_eligibility:'対象年齢',current_available:'現在の利用可否'};
   return questions[k]||`${unknownName(k)}か`;
+}
+function floorTokensOf(str){const out=new Set();const s=String(str??'');for(const m of s.matchAll(/(B?\d+F|中\d+F)/g))out.add(m[1]);for(const m of s.matchAll(/(\d+(?:・\d+)+)F/g))m[1].split('・').forEach(n=>out.add(n+'F'));return out;}
+function floorLineHtml(spot){
+  const floor=String(spot.floor??'');
+  if(!floor||floor.includes('未確認'))return '';
+  const loc=String(spot.location??'');
+  if(loc.includes(floor))return '';
+  const ft=floorTokensOf(floor),lt=floorTokensOf(loc);
+  if(ft.size&&[...ft].every(t=>lt.has(t)))return '';
+  return `<p>階：${esc(floor)}</p>`;
 }
 function renderDetail(){
   const spot=SPOTS.find(s=>s.id===state.spotId);
@@ -102,7 +112,7 @@ function renderDetail(){
   const storageSection=spot.facts.luggage_storage===true?`<section><h2>荷物預かり</h2>${textRow('種類',storageTypeText[spot.facts.storage_type]||null)}${textRow('ロッカーのサイズ',spot.facts.locker_sizes)}<p${(spot.facts.suitcase_ok===null||spot.facts.suitcase_ok===undefined||spot.facts.suitcase_ok==='UNKNOWN')?' class="unconfirmed"':''}>${esc(factCopy('suitcase_ok',spot.facts.suitcase_ok))}</p>${textRow('料金目安',spot.facts.fee_from)}${spot.facts.fee_note?textRow('料金',spot.facts.fee_note):''}${textRow('支払い方法',spot.facts.payment_methods)}<p${(spot.facts.ic_payment===null||spot.facts.ic_payment===undefined||spot.facts.ic_payment==='UNKNOWN')?' class="unconfirmed"':''}>${esc(factCopy('ic_payment',spot.facts.ic_payment))}</p></section>`:'';
   return `${renderHeader('スポットの詳細')}
     <div class="detail-title"><span class="badge state-${e.kind}">${e.kind==='A'?'条件に一致':e.kind==='B'?'一部条件を確認できません':e.kind==='C'?'条件を広げると候補':'条件外'}</span><span class="official-mark">✓ 公式情報のみ</span><h2>${esc(spot.name)}</h2><p>${esc(spot.facility)}</p></div>
-    <section><h2>場所</h2><p>${esc(spot.facility)}／${esc(spot.location)}</p>${spot.floor.includes('未確認')?'':`<p>階：${esc(spot.floor)}</p>`}<p>${esc(spot.walk.label)}（施設入口まで。館内移動は含みません）</p></section>
+    <section><h2>場所</h2><p>${esc(spot.facility)}／${esc(spot.location)}</p>${floorLineHtml(spot)}<p>${esc(spot.walk.label)}（施設入口まで。館内移動は含みません）</p></section>
     <section><h2>使えるもの</h2><div class="fact-grid">${[...new Set(known.map(([k,v])=>factCopy(k,v)))].map(t=>`<span class="fact-tile">${esc(t)}</span>`).join('')}</div></section>
     <section><h2>アクセス</h2>${accessRows}</section>
     ${workSection}${storageSection}
