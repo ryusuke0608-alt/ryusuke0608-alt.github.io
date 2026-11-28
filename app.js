@@ -1,18 +1,18 @@
 const INTENTS = {
   toilet:{icon:'🚻',label:'トイレに行きたい',sub:'多目的トイレ・おむつ台',conditions:{toilet:'must',walk:'must'}},
-  rest:{icon:'🪑',label:'休みたい',sub:'座って休める場所',conditions:{price:'must',indoor:'must',purchaseNo:'must',seating:'must',walk:'must'}},
-  eat:{icon:'🍙',label:'食べたい',sub:'飲食スペース・フードコート',conditions:{seating:'must',eating:'must',outsideFood:'must',price:'prefer',indoor:'prefer',walk:'must'}},
-  nursing:{icon:'🍼',label:'授乳したい',sub:'授乳室・ベビー休憩室',conditions:{nursing:'must',walk:'must'}},
+  rest:{icon:'🪑',label:'休みたい',sub:'座って休める場所',conditions:{price:'must',indoor:'must',purchaseNo:'prefer',seating:'must',walk:'must'}},
+  eat:{icon:'🍙',label:'食べたい',sub:'飲食スペース・フードコート',conditions:{seating:'must',eating:'must',outsideFood:'prefer',price:'prefer',indoor:'prefer',walk:'must'}},
+  nursing:{icon:'🍼',label:'授乳したい',sub:'授乳室・ベビー休憩室',conditions:{nursing:'must',diaper:'off',male:'off',walk:'must'}},
   diaper:{icon:'🚼',label:'おむつを替えたい',sub:'交換台のある場所',conditions:{diaper:'must',male:'must',walk:'must'}},
   kids:{icon:'🧸',label:'子どもを遊ばせたい',sub:'キッズスペース',conditions:{kids:'must',price:'must',indoor:'must',age:'prefer',walk:'must'}},
-  work:{icon:'💻',label:'作業したい',sub:'Wi-Fi・電源のある場所',conditions:{wifi:'prefer',power:'prefer',calls:'off',fee:'off',walk:'must'}},
+  work:{icon:'💻',label:'作業したい',sub:'Wi-Fi・電源のある場所',conditions:{wifi:'prefer',power:'prefer',calls:'off',walk:'must'}},
   storage:{icon:'🧳',label:'荷物を預けたい',sub:'コインロッカー・荷物預かり',conditions:{suitcase:'off',icpay:'off',walk:'must'}}
 };
 const CONDS = {
   price:{label:'無料',attr:'price'}, indoor:{label:'屋内',attr:'indoor'}, purchaseNo:{label:'購入不要',attr:'purchase_required'},
   seating:{label:'座席あり',attr:'seating'}, current:{label:'現在利用可能',attr:'current_available'}, walk:{label:'徒歩範囲',attr:'walk'},
   eating:{label:'飲食可能',attr:'eating_allowed'}, outsideFood:{label:'持込飲食可能',attr:'outside_food_allowed'},
-  male:{label:'男性も利用可能',attr:'male_accessible'}, diaper:{label:'おむつ交換',attr:'diaper_table'},
+  male:{label:'男性も利用可能',attr:'male_accessible'}, diaper:{label:'おむつ交換台',attr:'diaper_table'},
   nursing:{label:'授乳室',attr:'nursing_room'}, kids:{label:'キッズスペース',attr:'kids_space'}, age:{label:'対象年齢',attr:'age_eligibility'},
   toilet:{label:'トイレ',attr:'toilet'},
   stepFree:{label:'段差なしで到達',attr:'step_free'}, elevator:{label:'エレベーター',attr:'elevator_present'},
@@ -20,9 +20,9 @@ const CONDS = {
   stroller:{label:'ベビーカーのまま入れる',attr:'stroller_ok'},
   wifi:{label:'Wi-Fi',attr:'wifi_available'}, power:{label:'電源',attr:'power_available'},
   calls:{label:'通話・Web会議OK',attr:'calls_allowed'}, fee:{label:'無料',attr:'fee_type'},
-  suitcase:{label:'スーツケース可',attr:'suitcase_ok'}, icpay:{label:'IC使える',attr:'ic_payment'}
+  suitcase:{label:'スーツケース可',attr:'suitcase_ok'}, icpay:{label:'IC支払い可',attr:'ic_payment'}
 };
-const QUICK_CONDS = {rest:['price','indoor','purchaseNo','walk'],eat:['seating','outsideFood','price','indoor','walk'],diaper:['male','price','walk'],nursing:['nursing','price','walk'],kids:['price','indoor','age','walk'],toilet:['toilet','walk'],work:['wifi','power','calls','fee','walk'],storage:['suitcase','icpay','walk']};
+const QUICK_CONDS = {rest:['price','indoor','purchaseNo','walk'],eat:['seating','outsideFood','price','indoor','walk'],diaper:['male','price','walk'],nursing:['nursing','price','walk'],kids:['price','indoor','age','walk'],toilet:['toilet','walk'],work:['wifi','power','calls','price','walk'],storage:['suitcase','icpay','walk']};
 const ATTRS = {seating:'座席',free_seating:'無料で座れる',indoor:'屋内',purchase_required:'購入が必要',eating_allowed:'飲食可能',outside_food_allowed:'持込飲食可能',current_available:'現在の利用可否',price:'利用料金',kids_space:'キッズスペース',age_eligibility:'対象年齢',diaper_table:'おむつ交換台',male_accessible:'男性も利用可能',nursing_room:'授乳室',toilet:'トイレ',accessible_toilet:'多目的トイレ',elevator_present:'エレベーター',step_free:'段差なしで到達',stroller_ok:'ベビーカーのまま入れる',workspace:'作業スペース',wifi_available:'Wi-Fi',power_available:'電源',calls_allowed:'通話・Web会議',food_allowed:'飲食',fee_type:'料金',luggage_storage:'荷物預かり',storage_type:'預かりの種類',locker_sizes:'ロッカーのサイズ',suitcase_ok:'スーツケース',ic_payment:'IC支払い',fee_from:'料金目安',payment_methods:'支払い方法',time_limit_note:'時間制限'};
 const app = document.getElementById('app');
 const state = {screen:'home',intent:null,filters:{},draft:null,priceMode:'freeOnly',walkMinutes:10,relaxed:new Set(),spotId:null,detailFrom:'results',confirmation:null,history:[],origin:null,originMessage:'',selectedSpotId:null};
@@ -36,9 +36,17 @@ function back(){const prev=state.history.pop();if(prev){state.screen=prev.screen
 window.addEventListener('popstate',()=>back());
 function chooseIntent(intent){state.intent=intent;state.filters=copy(INTENTS[intent].conditions);if(state.filters.price===undefined)state.filters.price='prefer';state.priceMode=state.filters.price==='must'?'freeOnly':state.filters.price==='prefer'?'freePrefer':'includePaid';state.walkMinutes=10;state.relaxed=new Set();state.history=[{screen:'home',spotId:null}];state.screen='results';history.pushState({screen:'results'},'','#results');render();}
 function supportsIntent(spot){const f=spot.facts;switch(state.intent){case 'rest':case 'eat':return f.seating===true;case 'diaper':return f.diaper_table===true;case 'kids':return f.kids_space===true;case 'nursing':return f.nursing_room===true;case 'toilet':return f.toilet===true;case 'work':return f.workspace===true;case 'storage':return f.luggage_storage===true;default:return false;}}
+/* 料金の正本は fee_type（新しい調査で書く項目）。旧項目 price しかないスポットは
+   price を読み、両方ある場合は fee_type を優先する。「無料」の条件が price/fee の
+   2キーに分かれて別々の項目を読むと、同じ場所で判定が食い違う（2026-11-28
+   シナリオテスト S01 の不具合）。そのため両キーは必ずこの1関数で判定する。 */
+function feeCondValue(f){const v=(f.fee_type&&f.fee_type!=='UNKNOWN')?f.fee_type:f.price;return v==='FREE'?'yes':v==='PAID'?'no':(v==='CONDITIONAL_FREE'||v==='PURCHASE_REQUIRED')?'conditional':'unknown';}
+/* 表示用：解決した料金の値そのもの（既知の enum でなければ null）。詳細画面では
+   price と fee_type を別々に出さず、この値で1つだけ表示する（Codexレビュー
+   2026-11-28 の指摘：詳細画面に旧来の二重表示が残っていた）。 */
+function feeValueOf(f){const v=(f.fee_type&&f.fee_type!=='UNKNOWN')?f.fee_type:f.price;return (v==='FREE'||v==='PAID'||v==='CONDITIONAL_FREE'||v==='PURCHASE_REQUIRED')?v:null;}
 function condValue(spot,key){const f=spot.facts;switch(key){
-  case 'price': return f.price==='FREE' ? 'yes' : f.price==='PAID' ? 'no' : f.price==='CONDITIONAL_FREE' ? 'conditional' : 'unknown';
-  case 'fee': return f.fee_type==='FREE' ? 'yes' : f.fee_type==='PAID' ? 'no' : f.fee_type==='PURCHASE_REQUIRED' ? 'conditional' : 'unknown';
+  case 'price': case 'fee': return feeCondValue(f);
   case 'purchaseNo':return f.purchase_required===false?'yes':f.purchase_required===true?'no':'unknown';
   case 'walk':return 'unknown'; // dynamic origin has no verified walking route or duration
   case 'age':return f.age_eligibility===true?'yes':f.age_eligibility===false?'no':'unknown';
@@ -103,18 +111,28 @@ function renderDetail(){
   const ACCESS_KEYS=['elevator_present','step_free','accessible_toilet','stroller_ok'];
   const WORK_KEYS=['workspace','wifi_available','power_available','calls_allowed','food_allowed','fee_type','time_limit_note'];
   const STORAGE_KEYS=['luggage_storage','storage_type','locker_sizes','suitcase_ok','ic_payment','fee_from','fee_note','payment_methods'];
-  const SECTION_KEYS=[...ACCESS_KEYS,...WORK_KEYS,...STORAGE_KEYS];
+  const SECTION_KEYS=[...ACCESS_KEYS,...WORK_KEYS,...STORAGE_KEYS,'price'];
   const known=Object.entries(spot.facts).filter(([k,v])=>!SECTION_KEYS.includes(k)&&v!==null&&v!=='UNKNOWN');
   const unknown=Object.entries(spot.facts).filter(([k,v])=>!SECTION_KEYS.includes(k)&&k!=='current_available'&&(v===null||v==='UNKNOWN')).map(([k])=>`${unknownQuestion(k)}は未確認`);
+  const feeVal=feeValueOf(spot.facts);
+  /* 料金の表示方針（2026-11-28、Codex再レビューの指摘を受けて明文化）:
+     解決した値があれば1つだけ表示する。値がなく、料金フィールド自体は
+     あるスポットは「利用料金は未確認」と注意に出す。料金フィールドが
+     そもそも無いスポット（公衆トイレ等、料金が意味を持たない種別が大半）
+     には料金の表示も注意も出さない — 調査していない項目を「未確認」と
+     並べると、本当に確認が必要な注意が埋もれるため。作業環境の料金行は
+     作業スポットの項目として常時出す（未確認は未確認として表示）。 */
+  if(!feeVal&&('price' in spot.facts||'fee_type' in spot.facts))unknown.push('利用料金は未確認');
+  const feeTile=feeVal?`<span class="fact-tile">${esc(factCopy('fee_type',feeVal))}</span>`:'';
   const accessRows=ACCESS_KEYS.map(k=>{const v=spot.facts[k];return `<p${(v===null||v===undefined||v==='UNKNOWN')?' class="unconfirmed"':''}>${esc(factCopy(k,v))}</p>`;}).join('');
   const textRow=(label,v)=>`<p${v?'':' class="unconfirmed"'}>${esc(label)}：${v?esc(v):'未確認'}</p>`;
-  const workSection=spot.facts.workspace===true?`<section><h2>作業環境</h2>${['wifi_available','power_available','calls_allowed','food_allowed','fee_type'].map(k=>{const v=spot.facts[k];return `<p${(v===null||v===undefined||v==='UNKNOWN')?' class="unconfirmed"':''}>${esc(factCopy(k,v))}</p>`;}).join('')}${textRow('時間制限',spot.facts.time_limit_note)}</section>`:'';
+  const workSection=spot.facts.workspace===true?`<section><h2>作業環境</h2>${['wifi_available','power_available','calls_allowed','food_allowed'].map(k=>{const v=spot.facts[k];return `<p${(v===null||v===undefined||v==='UNKNOWN')?' class="unconfirmed"':''}>${esc(factCopy(k,v))}</p>`;}).join('')}<p${feeVal?'':' class="unconfirmed"'}>${esc(factCopy('fee_type',feeVal))}</p>${textRow('時間制限',spot.facts.time_limit_note)}</section>`:'';
   const storageTypeText={LOCKER:'コインロッカー',STAFFED:'有人預かり',BOTH:'コインロッカー・有人預かりの両方'};
   const storageSection=spot.facts.luggage_storage===true?`<section><h2>荷物預かり</h2>${textRow('種類',storageTypeText[spot.facts.storage_type]||null)}${textRow('ロッカーのサイズ',spot.facts.locker_sizes)}<p${(spot.facts.suitcase_ok===null||spot.facts.suitcase_ok===undefined||spot.facts.suitcase_ok==='UNKNOWN')?' class="unconfirmed"':''}>${esc(factCopy('suitcase_ok',spot.facts.suitcase_ok))}</p>${textRow('料金目安',spot.facts.fee_from)}${spot.facts.fee_note?textRow('料金',spot.facts.fee_note):''}${textRow('支払い方法',spot.facts.payment_methods)}<p${(spot.facts.ic_payment===null||spot.facts.ic_payment===undefined||spot.facts.ic_payment==='UNKNOWN')?' class="unconfirmed"':''}>${esc(factCopy('ic_payment',spot.facts.ic_payment))}</p></section>`:'';
   return `${renderHeader('スポットの詳細')}
     <div class="detail-title"><span class="badge state-${e.kind}">${e.kind==='A'?'条件に一致':e.kind==='B'?'一部条件を確認できません':e.kind==='C'?'条件を広げると候補':'条件外'}</span><span class="official-mark">✓ 公式情報のみ</span><h2>${esc(spot.name)}</h2><p>${esc(spot.facility)}</p></div>
     <section><h2>場所</h2><p>${esc(spot.facility)}／${esc(spot.location)}</p>${floorLineHtml(spot)}<p>${esc(spot.walk.label)}（施設入口まで。館内移動は含みません）</p></section>
-    <section><h2>使えるもの</h2><div class="fact-grid">${[...new Set(known.map(([k,v])=>factCopy(k,v)))].map(t=>`<span class="fact-tile">${esc(t)}</span>`).join('')}</div></section>
+    <section><h2>使えるもの</h2><div class="fact-grid">${[...new Set(known.map(([k,v])=>factCopy(k,v)))].map(t=>`<span class="fact-tile">${esc(t)}</span>`).join('')}${feeTile}</div></section>
     <section><h2>アクセス</h2>${accessRows}</section>
     ${workSection}${storageSection}
     <section><h2>利用時間</h2><p>${esc(spot.hours)}</p></section>

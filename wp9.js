@@ -198,14 +198,15 @@ function spotSummaryText(spot) {
   else if (facility && name.startsWith(facility)) s1 = `${name}です。`;
   else if (facility) s1 = `${facility}${floorPhrase}にあるスポットです。`;
   else s1 = `${name}です。`;
-  const priceSentence = preferFee => {
-    const order = preferFee ? [f.fee_type, f.price] : [f.price, f.fee_type];
-    for (const v of order) {
-      if (v === 'FREE') return '利用は無料です。';
-      if (v === 'PAID') return '利用は有料です。';
-      if (v === 'PURCHASE_REQUIRED') return '利用には購入が必要です。';
-      if (v === 'CONDITIONAL_FREE') return '条件付きで無料です。';
-    }
+  // 料金の正本は fee_type（app.js の feeCondValue と同じ規則に統一、2026-11-28 v60）。
+  // 以前は呼び出し側の引数で price 優先／fee_type 優先が切り替わり、条件チップと
+  // 要約文で料金の言い方が食い違う場合があった。
+  const priceSentence = () => {
+    const v = (f.fee_type && f.fee_type !== 'UNKNOWN') ? f.fee_type : f.price;
+    if (v === 'FREE') return '利用は無料です。';
+    if (v === 'PAID') return '利用は有料です。';
+    if (v === 'PURCHASE_REQUIRED') return '利用には購入が必要です。';
+    if (v === 'CONDITIONAL_FREE') return '条件付きで無料です。';
     if (f.purchase_required === true) return '利用には購入が必要です。';
     return '';
   };
@@ -227,7 +228,7 @@ function spotSummaryText(spot) {
       : '荷物預かりが利用できます。');
     if (T('suitcase_ok')) body.push('スーツケースも預けられます。');
     if (T('ic_payment')) body.push('ICカードで支払いができます。');
-    price = priceSentence(false);
+    price = priceSentence();
   } else if (T('workspace')) {
     const usable = [];
     if (T('wifi_available')) usable.push('Wi-Fi');
@@ -238,7 +239,7 @@ function spotSummaryText(spot) {
     if (T('food_allowed')) canDo.push('飲食');
     if (canDo.length) body.push(`${canDo.join('、')}も可能です。`);
     if (!usable.length && !canDo.length) body.push('作業スペースが利用できます。');
-    price = priceSentence(true);
+    price = priceSentence();
   } else if (T('nursing_room') || T('diaper_table')) {
     const items = [];
     if (T('nursing_room')) items.push('授乳室');
@@ -247,14 +248,14 @@ function spotSummaryText(spot) {
     if (T('kids_space')) items.push('キッズスペース');
     body.push(`${joinNouns(items)}が利用できます。`);
     if (T('male_accessible')) body.push('男性も利用できます。');
-    price = priceSentence(false);
+    price = priceSentence();
   } else if (T('kids_space')) {
     body.push('キッズスペースが利用できます。');
     const extras = [];
     if (T('nursing_room')) extras.push('授乳室');
     if (T('diaper_table')) extras.push('おむつ替え台');
     if (extras.length) body.push(`${joinNouns(extras)}も利用できます。`);
-    price = priceSentence(false);
+    price = priceSentence();
   } else if (T('toilet')) {
     const base = T('accessible_toilet') ? '多目的トイレ' : 'トイレ';
     const extras = [];
@@ -263,16 +264,16 @@ function spotSummaryText(spot) {
     if (T('kids_space')) extras.push('キッズスペース');
     body.push(extras.length ? `${base}と${joinNouns(extras)}が利用できます。` : `${base}が利用できます。`);
     if (T('male_accessible') && T('diaper_table')) body.push('男性も利用できます。');
-    price = priceSentence(false);
+    price = priceSentence();
   } else if (T('seating')) {
     if (T('eating_allowed') && T('outside_food_allowed')) body.push('座席があり、飲食や飲食物の持ち込みができます。');
     else if (T('eating_allowed')) body.push('座席があり、飲食ができます。');
     else if (T('outside_food_allowed')) body.push('座席があり、飲食物の持ち込みができます。');
     else body.push('座席があり、休憩に利用できます。');
     // 購入が必要（確認済み）のスポットでは「無料で座れます」を出さない（両立データが実在するため、強い利用条件を優先する）
-    price = T('purchase_required') ? '利用には購入が必要です。' : T('free_seating') ? '無料で座れます。' : priceSentence(false);
+    price = T('purchase_required') ? '利用には購入が必要です。' : T('free_seating') ? '無料で座れます。' : priceSentence();
   } else {
-    price = priceSentence(false);
+    price = priceSentence();
   }
   return [s1, ...body, accessSentence(), price].filter(Boolean).join('');
 }
@@ -313,11 +314,15 @@ function preferYesCount(spot) {
   }
   return n;
 }
-function sortCandidates(list) {
+function sortCandidates(list, mustDiscount) {
   // 2026-11-16 本人指示: 「できれば」に該当する候補を上位に表示する。ただし遠方の候補が近くの候補を
   // 追い越さないよう、一致1件あたり250m分の距離割引として並び替え専用の距離にだけ反映する（2026-11-08の並び順指示と両立させる）。
-  const decorated = list.map(x => { const d = sortDistance(x.s); return {x, m: mustYesCount(x.s), d: d === null ? null : Math.max(0, d - 250 * preferYesCount(x.s))}; });
-  decorated.sort((p, q) => (q.m - p.m) || ((p.d === null ? Infinity : p.d) - (q.d === null ? Infinity : q.d)));
+  // 2026-11-28 追加（シナリオテストの指摘）: 「条件に一致」以外の候補セクションでは、必須の該当数だけで
+  // 並べると数km先の場所が近くの場所より上に来てしまうため、必須の該当数も1件あたり250mの距離割引に
+  // 換算して距離優先で並べる。一致セクション（A）の並び順は従来どおり（必須の該当数が多い順→近い順）。
+  const decorated = list.map(x => { const d = sortDistance(x.s); return {x, m: mustYesCount(x.s), d: d === null ? null : Math.max(0, d - 250 * preferYesCount(x.s) - (mustDiscount ? 250 * mustYesCount(x.s) : 0))}; });
+  if (mustDiscount) decorated.sort((p, q) => ((p.d === null ? Infinity : p.d) - (q.d === null ? Infinity : q.d)) || (q.m - p.m));
+  else decorated.sort((p, q) => (q.m - p.m) || ((p.d === null ? Infinity : p.d) - (q.d === null ? Infinity : q.d)));
   return decorated.map(y => y.x);
 }
 function loadHiddenIntents(){ try{ const v=JSON.parse(localStorage.getItem('yasumiru.hiddenIntents')||localStorage.getItem('cocomiru.hiddenIntents')||'[]'); return new Set(Array.isArray(v)?v.filter(x=>INTENTS[x]):[]); }catch(e){ return new Set(); } }
@@ -338,7 +343,7 @@ function renderOrigin() {
 }
 function card(spot, result) {
   const key = state.intent;
-  const important = key === 'rest' ? ['price','indoor','purchaseNo','seating'] : key === 'eat' ? ['seating','eating','outsideFood','price','indoor'] : key === 'diaper' ? ['diaper','male'] : key === 'kids' ? ['kids','price','indoor','age'] : key === 'nursing' ? ['nursing'] : key === 'work' ? ['wifi','power','calls','fee'] : key === 'storage' ? ['suitcase','icpay'] : ['toilet'];
+  const important = key === 'rest' ? ['price','indoor','purchaseNo','seating'] : key === 'eat' ? ['seating','eating','outsideFood','price','indoor'] : key === 'diaper' ? ['diaper','male'] : key === 'kids' ? ['kids','price','indoor','age'] : key === 'nursing' ? ['nursing'] : key === 'work' ? ['wifi','power','calls','price'] : key === 'storage' ? ['suitcase','icpay'] : ['toilet'];
   const badge = result.kind === 'A' ? '条件に一致' : result.kind === 'B' ? '一部条件を確認できません' : '条件を広げると候補';
   const unresolved = result.missing?.length ? condText(result.missing[0].key, result.missing[0].v) + (result.missing.length > 1 ? ' ほか' : '') : '';
   return `<article id="card-${esc(spot.id)}" data-spot-id="${esc(spot.id)}" class="card state-${result.kind}"><div class="card-row"><div class="card-text"><div class="badge">${badge}</div>${openNow(spot) === true ? '<span class="open-now">● いま使える</span>' : ''}<span class="official-mark">✓ 公式情報のみ</span><h3>${esc(spot.name)}</h3><p class="facility">${esc(spot.facility)}</p>${unresolved ? `<p class="alert">${esc(unresolved)}</p>` : ''}<div class="facts">${important.map(k => `<span class="fact ${condValue(spot,k)}">${esc(condText(k,condValue(spot,k)))}</span>`).join('')}</div><p class="meta"><span class="dist">${esc(distanceLabel(spot))}</span>${spot.floor ? `<span class="floor">${esc(String(spot.floor))}</span>` : ''}</p></div>${cardPhotoHtml(spot)}</div><div class="card-actions"><button class="primary" data-action="detail" data-id="${esc(spot.id)}">詳しく見る</button>${(entrance(spot) || (typeof FACILITY_POINTS !== 'undefined' && FACILITY_POINTS[spot.facility])) ? `<button class="secondary" data-action="focusMap" data-id="${esc(spot.id)}">地図で見る</button>` : ''}</div></article>`;
@@ -376,7 +381,7 @@ function widenInfo(aCount) {
 }
 function renderResults() {
   const i = INTENTS[state.intent], evaluated = candidateView();
-  const a = sortCandidates(evaluated.filter(x => x.e.kind === 'A')), b = sortCandidates(evaluated.filter(x => x.e.kind === 'B')), c = sortCandidates(evaluated.filter(x => x.e.kind === 'C')), noTrusted = !a.length;
+  const a = sortCandidates(evaluated.filter(x => x.e.kind === 'A')), b = sortCandidates(evaluated.filter(x => x.e.kind === 'B'), true), c = sortCandidates(evaluated.filter(x => x.e.kind === 'C'), true), noTrusted = !a.length;
   cardIndex = new Map();
   a.forEach((x, idx) => cardIndex.set(x.s.id, { sec: 'a', idx }));
   b.forEach((x, idx) => cardIndex.set(x.s.id, { sec: 'b', idx }));
