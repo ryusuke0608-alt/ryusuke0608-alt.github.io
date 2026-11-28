@@ -110,10 +110,10 @@ function renderDetail(){
   const spot=SPOTS.find(s=>s.id===state.spotId);
   if(!spot)return renderResults();
   const e=evaluate(spot);
-  const ACCESS_KEYS=['elevator_present','step_free','accessible_toilet','stroller_ok'];
+  const ACCESS_KEYS=['elevator_present','step_free','stroller_ok']; // 多目的トイレはアクセスではなく特徴（2026-11-28 本人指摘で分類見直し）
   const WORK_KEYS=['workspace','wifi_available','power_available','calls_allowed','food_allowed','fee_type','time_limit_note'];
   const STORAGE_KEYS=['luggage_storage','storage_type','locker_sizes','suitcase_ok','ic_payment','fee_from','fee_note','payment_methods'];
-  const SECTION_KEYS=[...ACCESS_KEYS,...WORK_KEYS,...STORAGE_KEYS,'price'];
+  const SECTION_KEYS=[...ACCESS_KEYS,...WORK_KEYS,...STORAGE_KEYS,'price','accessible_toilet']; // 多目的トイレは特徴欄に常時表示（キー自体が無いスポットでも未確認タイルを出す。アクセス欄時代の常時表示を維持するため）
   const known=Object.entries(spot.facts).filter(([k,v])=>!SECTION_KEYS.includes(k)&&v!==null&&v!=='UNKNOWN');
   const unknown=Object.entries(spot.facts).filter(([k,v])=>!SECTION_KEYS.includes(k)&&k!=='current_available'&&(v===null||v==='UNKNOWN')).map(([k])=>`${unknownQuestion(k)}は未確認`);
   const feeVal=feeValueOf(spot.facts);
@@ -125,13 +125,13 @@ function renderDetail(){
      並べると、本当に確認が必要な注意が埋もれるため。作業環境の料金行は
      作業スポットの項目として常時出す（未確認は未確認として表示）。 */
   if(!feeVal&&('price' in spot.facts||'fee_type' in spot.facts))unknown.push('利用料金は未確認');
-  const feeTile=feeVal?`<span class="fact-tile">${esc(factCopy('fee_type',feeVal))}</span>`:'';
   /* 詳細画面の事実表示は全セクションでタイル（まる囲み）に統一する
      （2026-11-28 現地レビュー指摘：セクションごとに表示形式が違うと読みにくい）。
      確認済み=白タイル+✓、未確認=グレー、否定（〜不可・なし）=赤系。 */
   const tile=(text,cls)=>`<span class="fact-tile${cls?' '+cls:''}">${esc(text)}</span>`;
   const factTile=(k,v)=>tile(factCopy(k,v),(v===null||v===undefined||v==='UNKNOWN')?'tile-unknown':(v===false?'tile-no':''));
   const textTile=(label,v)=>{const unk=v===null||v===undefined||v===''||v==='UNKNOWN';return tile(`${label}：${unk?'未確認':v}`,unk?'tile-unknown':'');};
+  const feeTile=feeVal?factTile('fee_type',feeVal):'';
   const accessRows=`<div class="fact-grid">${ACCESS_KEYS.map(k=>factTile(k,spot.facts[k])).join('')}</div>`;
   const workSection=spot.facts.workspace===true?`<section><h2>作業環境</h2><div class="fact-grid">${['wifi_available','power_available','calls_allowed','food_allowed'].map(k=>factTile(k,spot.facts[k])).join('')}${factTile('fee_type',feeVal)}${textTile('時間制限',spot.facts.time_limit_note)}</div></section>`:'';
   const storageTypeText={LOCKER:'コインロッカー',STAFFED:'有人預かり',BOTH:'コインロッカー・有人預かりの両方'};
@@ -139,7 +139,7 @@ function renderDetail(){
   return `${renderHeader('スポットの詳細')}
     <div class="detail-title"><span class="badge state-${e.kind}">${e.kind==='A'?'条件に一致':e.kind==='B'?'一部条件を確認できません':e.kind==='C'?'条件を広げると候補':'条件外'}</span><span class="official-mark">✓ 公式情報のみ</span><h2>${esc(spot.name)}</h2><p>${esc(spot.facility)}</p></div>
     <section><h2>場所</h2><p>${esc(spot.facility)}／${esc(spot.location)}</p>${floorLineHtml(spot)}<p>${esc(spot.walk.label)}（施設入口まで。館内移動は含みません）</p></section>
-    <section><h2>特徴</h2><div class="fact-grid">${[...new Set(known.map(([k,v])=>factCopy(k,v)))].map(t=>`<span class="fact-tile">${esc(t)}</span>`).join('')}${feeTile}</div></section>
+    <section><h2>特徴</h2><div class="fact-grid">${(()=>{const seen=new Set();return known.filter(([k,v])=>{const t=factCopy(k,v);if(seen.has(t))return false;seen.add(t);return true;}).map(([k,v])=>factTile(k,v)).join('');})()}${factTile('accessible_toilet',spot.facts.accessible_toilet)}${feeTile}</div></section>
     <section><h2>アクセス</h2>${accessRows}</section>
     ${workSection}${storageSection}
     <section><h2>利用時間</h2><p>${esc(spot.hours)}</p></section>
