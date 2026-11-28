@@ -34,9 +34,13 @@ function renderOriginPrompt() {
 cycleQuickCondition = function (key) { const mode = state.filters[key] || 'off'; if (mode === 'must' && !state.relaxed.has(key)) { state.relaxed.add(key); } else if (mode === 'must') { state.relaxed.delete(key); state.filters[key] = 'prefer'; if (key === 'price') state.priceMode = 'freePrefer'; } else if (mode === 'prefer') { state.filters[key] = 'off'; state.relaxed.delete(key); if (key === 'price') state.priceMode = 'includePaid'; } else { state.filters[key] = 'must'; if (key === 'price') state.priceMode = 'freeOnly'; } render(); };
 const wpChooseIntent = chooseIntent;
 chooseIntent = function (intent) { state.resultsView = null; sheetOpen = false; intentMenuOpen = false; wpChooseIntent(intent); };
+/* 料金チップの表示は、条件画面のラジオと同じ言葉（無料のみ／無料優先／有料も含む）で
+   統一する（2026-11-28 シナリオテスト第1弾の指摘：結果のチップだけ「無料 必須」等と
+   別表現で、同じ設定なのに画面ごとに言葉が違った）。 */
+const PRICE_MODE_WORDS = { freeOnly: '無料のみ', freePrefer: '無料優先', includePaid: '有料も含む' };
 function stripChips() {
   const quick = new Set(QUICK_CONDS[state.intent] || []);
-  return Object.entries(state.filters).filter(([k, v]) => v !== 'off' && !quick.has(k)).map(([k, v]) => { const relaxed = state.relaxed.has(k); const cur = relaxed ? '未確認も含む' : v === 'must' ? '必須' : 'できれば'; const next = v === 'must' ? (relaxed ? 'できれば' : '未確認も含む') : '指定なし'; const label = `${CONDS[k].label}${k === 'walk' ? ` ${state.walkMinutes}分` : ''}`; return `<button class="chip ${relaxed ? 'relaxed' : ''}" data-action="chipCondition" data-key="${k}" aria-label="${esc(label)}：${cur}。タップで${next}に変更">${esc(label)} · ${cur}</button>`; }).join('');
+  return Object.entries(state.filters).filter(([k, v]) => v !== 'off' && !quick.has(k)).map(([k, v]) => { const relaxed = state.relaxed.has(k); if (k === 'price') { const cur = PRICE_MODE_WORDS[state.priceMode] + (relaxed ? '（未確認も含む）' : ''); const next = v === 'must' ? (relaxed ? PRICE_MODE_WORDS.freePrefer : '無料のみ（未確認も含む）') : PRICE_MODE_WORDS.includePaid; return `<button class="chip ${relaxed ? 'relaxed' : ''}" data-action="chipCondition" data-key="price" aria-label="利用料金：${esc(cur)}。タップで${esc(next)}に変更">利用料金 · ${esc(cur)}</button>`; } const cur = relaxed ? '未確認も含む' : v === 'must' ? '必須' : 'できれば'; const next = v === 'must' ? (relaxed ? 'できれば' : '未確認も含む') : '指定なし'; const label = `${CONDS[k].label}${k === 'walk' ? ` ${state.walkMinutes}分` : ''}`; return `<button class="chip ${relaxed ? 'relaxed' : ''}" data-action="chipCondition" data-key="${k}" aria-label="${esc(label)}：${cur}。タップで${next}に変更">${esc(label)} · ${cur}</button>`; }).join('');
 }
 let stripDownPos = null, stripDragMoved = false;
 if (typeof document !== 'undefined' && document.addEventListener) {
@@ -45,14 +49,22 @@ if (typeof document !== 'undefined' && document.addEventListener) {
   document.addEventListener('click', ev => { if (stripDragMoved && ev.target && ev.target.closest && ev.target.closest('.chips-strip')) { ev.stopPropagation(); ev.preventDefault(); stripDragMoved = false; } }, true);
   document.addEventListener('input', ev => { if (ev.target && ev.target.id === 'areaFilter') { const q = ev.target.value.trim(); document.querySelectorAll('.area-list [data-action="areaPick"]').forEach(b => { b.style.display = (!q || (b.dataset.search || '').includes(q)) ? '' : 'none'; }); } });
 }
+function resultsScrollSig() {
+  // スクロール位置の復元が「いつの結果一覧のものか」を判定する署名。目的・条件・徒歩・料金・
+  // 出発地点のどれかが変わったら別の一覧なので、古い位置は復元しない（2026-11-28 シナリオ
+  // テスト第1弾の指摘：前の目的のスクロール位置が次の目的の一覧に残って見えた）。
+  const o = state.origin;
+  return JSON.stringify({ i: state.intent, f: state.filters, w: state.walkMinutes, p: state.priceMode, r: [...state.relaxed].sort(), o: o ? [o.kind, o.lat, o.lon] : null });
+}
 function attachSheet() {
   const body = document.getElementById('sheetBody');
   if (body) {
-    if (state.resultsView && state.resultsView.scroll) body.scrollTop = state.resultsView.scroll;
+    if (state.resultsView && state.resultsView.scroll && state.resultsView.sig === resultsScrollSig()) body.scrollTop = state.resultsView.scroll;
+    else if (state.screen === 'results') body.scrollTop = 0;
     /* 詳細から戻ったときの位置復元（2026-11-27 UI改善セット）: 写真の読み込み等で
        カードの高さが変わっても、開いたカードの相対位置を基準に補正して元へ戻す。 */
     const rv = state.resultsView;
-    if (rv && rv.anchorId && typeof rv.anchorDelta === 'number') {
+    if (rv && rv.anchorId && typeof rv.anchorDelta === 'number' && rv.sig === resultsScrollSig()) {
       let corrected = 0;
       const correct = () => {
         if (state.screen !== 'results') return;
@@ -64,7 +76,7 @@ function attachSheet() {
       if (typeof requestAnimationFrame === 'function') requestAnimationFrame(correct);
       if (typeof setTimeout === 'function') setTimeout(correct, 400);
     }
-    body.addEventListener('scroll', () => { if (state.screen === 'results') { state.resultsView = state.resultsView || { intent: state.intent }; state.resultsView.scroll = body.scrollTop; } }, { passive: true });
+    body.addEventListener('scroll', () => { if (state.screen === 'results') { state.resultsView = state.resultsView || { intent: state.intent }; state.resultsView.scroll = body.scrollTop; state.resultsView.sig = resultsScrollSig(); } }, { passive: true });
   }
   if (typeof document.querySelector !== 'function') return;
   const handle = document.querySelector('.sheet-handle'), sheet = document.getElementById('resultSheet'), stage = document.querySelector('.results-stage');
@@ -350,7 +362,7 @@ function card(spot, result) {
 }
 function quickStrip() {
   const keys = QUICK_CONDS[state.intent] || [];
-  return keys.map(k => { const mode = state.filters[k] || 'off'; const relaxed = mode === 'must' && state.relaxed.has(k); const cur = relaxed ? '未確認も含む' : mode === 'must' ? '必須' : mode === 'prefer' ? 'できれば' : '指定なし'; const next = relaxed ? 'できれば' : mode === 'must' ? '未確認も含む' : mode === 'prefer' ? '指定なし' : '必須'; const label = CONDS[k].label + (k === 'walk' ? ` ${state.walkMinutes}分` : ''); return `<button class="quick-button mode-${mode}${relaxed ? ' relaxed' : ''}" data-action="quickCondition" data-key="${k}" aria-label="${esc(label)}：${cur}。タップで${next}に変更"><strong>${esc(label)}</strong><span>${cur}</span></button>`; }).join('');
+  return keys.map(k => { const mode = state.filters[k] || 'off'; const relaxed = mode === 'must' && state.relaxed.has(k); if (k === 'price') { const cur = PRICE_MODE_WORDS[state.priceMode] + (relaxed ? '（未確認も含む）' : ''); const next = mode === 'must' ? (relaxed ? PRICE_MODE_WORDS.freePrefer : '無料のみ（未確認も含む）') : mode === 'prefer' ? PRICE_MODE_WORDS.includePaid : PRICE_MODE_WORDS.freeOnly; return `<button class="quick-button mode-${mode}${relaxed ? ' relaxed' : ''}" data-action="quickCondition" data-key="price" aria-label="利用料金：${esc(cur)}。タップで${esc(next)}に変更"><strong>利用料金</strong><span>${esc(cur)}</span></button>`; } const cur = relaxed ? '未確認も含む' : mode === 'must' ? '必須' : mode === 'prefer' ? 'できれば' : '指定なし'; const next = relaxed ? 'できれば' : mode === 'must' ? '未確認も含む' : mode === 'prefer' ? '指定なし' : '必須'; const label = CONDS[k].label + (k === 'walk' ? ` ${state.walkMinutes}分` : ''); return `<button class="quick-button mode-${mode}${relaxed ? ' relaxed' : ''}" data-action="quickCondition" data-key="${k}" aria-label="${esc(label)}：${cur}。タップで${next}に変更"><strong>${esc(label)}</strong><span>${cur}</span></button>`; }).join('');
 }
 const SECTION_CAP = 100;
 /* 初期表示は各セクション上位8件（2026-11-27 本人採用）。残りは「もっと見る」で
@@ -379,9 +391,19 @@ function widenInfo(aCount) {
   try { n = candidateView().filter(x => x.e.kind === 'A').length; } finally { state.walkMinutes = cur; }
   return n > aCount ? { next, add: n - aCount } : null;
 }
+function candidateInRange(x) {
+  // 徒歩が必須のとき、候補（未確認）でも「並び替え用距離（入口→施設代表点→エリア中心の順で代替）」が
+  // 徒歩分数×300mを超える場所は、その徒歩範囲に入り得ないので候補に出さない（2026-11-28
+  // シナリオテスト第1弾の指摘：渋谷で八潮・王子、宇都宮で太田・水戸など、数km〜数十km先の候補が
+  // 距離の表示もなく並び、近くの候補と見分けがつかなかった）。距離が取れない場所は遠いと
+  // 断定できないため残す。徒歩を広げた（relaxed）場合は利用者の選択を優先して制限しない。
+  if (!state.origin || state.filters.walk !== 'must' || state.relaxed.has('walk')) return true;
+  const d = sortDistance(x.s);
+  return d === null || d <= state.walkMinutes * 300;
+}
 function renderResults() {
   const i = INTENTS[state.intent], evaluated = candidateView();
-  const a = sortCandidates(evaluated.filter(x => x.e.kind === 'A')), b = sortCandidates(evaluated.filter(x => x.e.kind === 'B'), true), c = sortCandidates(evaluated.filter(x => x.e.kind === 'C'), true), noTrusted = !a.length;
+  const a = sortCandidates(evaluated.filter(x => x.e.kind === 'A')), b = sortCandidates(evaluated.filter(x => x.e.kind === 'B').filter(candidateInRange), true), c = sortCandidates(evaluated.filter(x => x.e.kind === 'C').filter(candidateInRange), true), noTrusted = !a.length;
   cardIndex = new Map();
   a.forEach((x, idx) => cardIndex.set(x.s.id, { sec: 'a', idx }));
   b.forEach((x, idx) => cardIndex.set(x.s.id, { sec: 'b', idx }));
@@ -622,7 +644,7 @@ app.addEventListener('click', ev => {
   const {action:a,id,key}=btn.dataset;
   if (a==='intent' && state.screen==='home' && !state.origin) { ev.stopImmediatePropagation(); pendingIntent = id; state.originMessage=''; render(); return; }
   if (a==='originPromptCancel') { ev.stopImmediatePropagation(); const backTo = pendingIntent; pendingIntent = null; render(); if (backTo && typeof document !== 'undefined' && typeof document.querySelector === 'function') { const b = document.querySelector(`button.intent[data-id="${backTo}"]`); if (b && typeof b.focus === 'function') b.focus(); } return; }
-  if (a==='detail' && state.screen==='results') { const b=document.getElementById('sheetBody'); if (b && typeof b.scrollTop==='number') { const c=document.getElementById(`card-${id}`); let delta=null; if (c && c.getBoundingClientRect && b.getBoundingClientRect) { const d=c.getBoundingClientRect().top - b.getBoundingClientRect().top; if (Number.isFinite(d)) delta=d; } state.resultsView = Object.assign(state.resultsView || {}, { intent: state.intent, scroll: b.scrollTop, anchorId: id, anchorDelta: delta }); } return; }
+  if (a==='detail' && state.screen==='results') { const b=document.getElementById('sheetBody'); if (b && typeof b.scrollTop==='number') { const c=document.getElementById(`card-${id}`); let delta=null; if (c && c.getBoundingClientRect && b.getBoundingClientRect) { const d=c.getBoundingClientRect().top - b.getBoundingClientRect().top; if (Number.isFinite(d)) delta=d; } state.resultsView = Object.assign(state.resultsView || {}, { intent: state.intent, scroll: b.scrollTop, anchorId: id, anchorDelta: delta, sig: resultsScrollSig() }); } return; }
   if (!['geolocate','manualOrigin','preset','areaPick','selectCard','focusMap','goUse','usageConfirm','toggleSheet','resetFilters','intentMenu','recenter','showMore','walkSet'].includes(a)) return;
   ev.stopImmediatePropagation();
   if (a==='walkSet') { const n = Number(btn.dataset.minutes); if ([5, 10, 15].includes(n)) state.walkMinutes = n; return render(); }
