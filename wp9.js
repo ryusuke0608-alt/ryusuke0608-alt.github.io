@@ -40,7 +40,7 @@ chooseIntent = function (intent) { state.resultsView = null; sheetOpen = false; 
 const PRICE_MODE_WORDS = { freeOnly: '無料のみ', freePrefer: '無料優先', includePaid: '有料も含む' };
 function stripChips() {
   const quick = new Set(QUICK_CONDS[state.intent] || []);
-  return Object.entries(state.filters).filter(([k, v]) => v !== 'off' && !quick.has(k)).map(([k, v]) => { const relaxed = state.relaxed.has(k); if (k === 'price') { const cur = PRICE_MODE_WORDS[state.priceMode] + (relaxed ? '（未確認も含む）' : ''); const next = v === 'must' ? (relaxed ? PRICE_MODE_WORDS.freePrefer : '無料のみ（未確認も含む）') : PRICE_MODE_WORDS.includePaid; return `<button class="chip ${relaxed ? 'relaxed' : ''}" data-action="chipCondition" data-key="price" aria-label="利用料金：${esc(cur)}。タップで${esc(next)}に変更">利用料金 · ${esc(cur)}</button>`; } const cur = relaxed ? '未確認も含む' : v === 'must' ? '必須' : 'できれば'; const next = v === 'must' ? (relaxed ? 'できれば' : '未確認も含む') : '指定なし'; const label = `${CONDS[k].label}${k === 'walk' ? ` ${state.walkMinutes}分` : ''}`; return `<button class="chip ${relaxed ? 'relaxed' : ''}" data-action="chipCondition" data-key="${k}" aria-label="${esc(label)}：${cur}。タップで${next}に変更">${esc(label)} · ${cur}</button>`; }).join('');
+  return Object.entries(state.filters).filter(([k, v]) => v !== 'off' && !quick.has(k)).map(([k, v]) => { const relaxed = state.relaxed.has(k); if (k === 'price') { const cur = PRICE_MODE_WORDS[state.priceMode] + (relaxed ? '（未確認も含む）' : ''); const tap = v === 'must' ? (relaxed ? 'タップで無料優先に変えます' : 'タップで、無料のみのまま、確認できていない場所も含めます') : 'タップで有料も含むに変えます'; return `<button class="chip ${relaxed ? 'relaxed' : ''}" data-action="chipCondition" data-key="price" aria-label="利用料金：${esc(cur)}。${esc(tap)}">利用料金 · ${esc(cur)}</button>`; } const cur = relaxed ? '未確認も含む' : v === 'must' ? '必須' : 'できれば'; const next = v === 'must' ? (relaxed ? 'できれば' : '未確認も含む') : '指定しない'; const label = `${CONDS[k].label}${k === 'walk' ? ` ${state.walkMinutes}分` : ''}`; return `<button class="chip ${relaxed ? 'relaxed' : ''}" data-action="chipCondition" data-key="${k}" aria-label="${esc(label)}：${cur}。タップで${next}に変更">${esc(label)} · ${cur}</button>`; }).join('');
 }
 let stripDownPos = null, stripDragMoved = false;
 if (typeof document !== 'undefined' && document.addEventListener) {
@@ -61,20 +61,16 @@ function attachSheet() {
   if (body) {
     if (state.resultsView && state.resultsView.scroll && state.resultsView.sig === resultsScrollSig()) body.scrollTop = state.resultsView.scroll;
     else if (state.screen === 'results') body.scrollTop = 0;
-    /* 詳細から戻ったときの位置復元（2026-11-27 UI改善セット）: 写真の読み込み等で
-       カードの高さが変わっても、開いたカードの相対位置を基準に補正して元へ戻す。 */
+    /* 詳細から戻ったときの位置復元: 保存したスクロール位置そのものを復元する。
+       以前は開いたカードの相対位置を基準に補正していたが、補正でカードが先頭に
+       来てしまう事象がシナリオテスト第3弾（2026-11-29・所見5）で観察されたため、
+       保存値の復元に一本化した。再描画直後は高さが確定していないことがあるので、
+       次フレームと少し遅れてもう一度、同じ値を入れ直す。 */
     const rv = state.resultsView;
-    if (rv && rv.anchorId && typeof rv.anchorDelta === 'number' && rv.sig === resultsScrollSig()) {
-      let corrected = 0;
-      const correct = () => {
-        if (state.screen !== 'results') return;
-        const b = document.getElementById('sheetBody'), c = document.getElementById(`card-${rv.anchorId}`);
-        if (!b || !c || !c.getBoundingClientRect || !b.getBoundingClientRect) return;
-        const d = c.getBoundingClientRect().top - b.getBoundingClientRect().top;
-        if (Number.isFinite(d) && Number.isFinite(rv.anchorDelta)) { b.scrollTop += (d - rv.anchorDelta); corrected++; if (corrected >= 2) rv.anchorDelta = null; }
-      };
-      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(correct);
-      if (typeof setTimeout === 'function') setTimeout(correct, 400);
+    if (rv && typeof rv.scroll === 'number' && rv.scroll > 0 && rv.sig === resultsScrollSig()) {
+      const restore = () => { if (state.screen !== 'results') return; const b = document.getElementById('sheetBody'); if (b) b.scrollTop = rv.scroll; };
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(restore);
+      if (typeof setTimeout === 'function') setTimeout(restore, 400);
     }
     body.addEventListener('scroll', () => { if (state.screen === 'results') { state.resultsView = state.resultsView || { intent: state.intent }; state.resultsView.scroll = body.scrollTop; state.resultsView.sig = resultsScrollSig(); } }, { passive: true });
   }
@@ -362,7 +358,7 @@ function card(spot, result) {
 }
 function quickStrip() {
   const keys = QUICK_CONDS[state.intent] || [];
-  return keys.map(k => { const mode = state.filters[k] || 'off'; const relaxed = mode === 'must' && state.relaxed.has(k); if (k === 'price') { const cur = PRICE_MODE_WORDS[state.priceMode] + (relaxed ? '（未確認も含む）' : ''); const next = mode === 'must' ? (relaxed ? PRICE_MODE_WORDS.freePrefer : '無料のみ（未確認も含む）') : mode === 'prefer' ? PRICE_MODE_WORDS.includePaid : PRICE_MODE_WORDS.freeOnly; return `<button class="quick-button mode-${mode}${relaxed ? ' relaxed' : ''}" data-action="quickCondition" data-key="price" aria-label="利用料金：${esc(cur)}。タップで${esc(next)}に変更"><strong>利用料金</strong><span>${esc(cur)}</span></button>`; } const cur = relaxed ? '未確認も含む' : mode === 'must' ? '必須' : mode === 'prefer' ? 'できれば' : '指定なし'; const next = relaxed ? 'できれば' : mode === 'must' ? '未確認も含む' : mode === 'prefer' ? '指定なし' : '必須'; const label = CONDS[k].label + (k === 'walk' ? ` ${state.walkMinutes}分` : ''); return `<button class="quick-button mode-${mode}${relaxed ? ' relaxed' : ''}" data-action="quickCondition" data-key="${k}" aria-label="${esc(label)}：${cur}。タップで${next}に変更"><strong>${esc(label)}</strong><span>${cur}</span></button>`; }).join('');
+  return keys.map(k => { const mode = state.filters[k] || 'off'; const relaxed = mode === 'must' && state.relaxed.has(k); if (k === 'price') { const cur = PRICE_MODE_WORDS[state.priceMode] + (relaxed ? '（未確認も含む）' : ''); const tap = mode === 'must' ? (relaxed ? 'タップで無料優先に変えます' : 'タップで、無料のみのまま、確認できていない場所も含めます') : mode === 'prefer' ? 'タップで有料も含むに変えます' : 'タップで無料のみに変えます'; return `<button class="quick-button mode-${mode}${relaxed ? ' relaxed' : ''}" data-action="quickCondition" data-key="price" aria-label="利用料金：${esc(cur)}。${esc(tap)}"><strong>利用料金</strong><span>${esc(cur)}</span></button>`; } const cur = relaxed ? '未確認も含む' : mode === 'must' ? '必須' : mode === 'prefer' ? 'できれば' : '指定しない'; const next = relaxed ? 'できれば' : mode === 'must' ? '未確認も含む' : mode === 'prefer' ? '指定しない' : '必須'; const label = CONDS[k].label + (k === 'walk' ? ` ${state.walkMinutes}分` : ''); return `<button class="quick-button mode-${mode}${relaxed ? ' relaxed' : ''}" data-action="quickCondition" data-key="${k}" aria-label="${esc(label)}：${cur}。タップで${next}に変更"><strong>${esc(label)}</strong><span>${cur}</span></button>`; }).join('');
 }
 const SECTION_CAP = 100;
 /* 初期表示は各セクション上位8件（2026-11-27 本人採用）。残りは「もっと見る」で
@@ -644,7 +640,7 @@ app.addEventListener('click', ev => {
   const {action:a,id,key}=btn.dataset;
   if (a==='intent' && state.screen==='home' && !state.origin) { ev.stopImmediatePropagation(); pendingIntent = id; state.originMessage=''; render(); return; }
   if (a==='originPromptCancel') { ev.stopImmediatePropagation(); const backTo = pendingIntent; pendingIntent = null; render(); if (backTo && typeof document !== 'undefined' && typeof document.querySelector === 'function') { const b = document.querySelector(`button.intent[data-id="${backTo}"]`); if (b && typeof b.focus === 'function') b.focus(); } return; }
-  if (a==='detail' && state.screen==='results') { const b=document.getElementById('sheetBody'); if (b && typeof b.scrollTop==='number') { const c=document.getElementById(`card-${id}`); let delta=null; if (c && c.getBoundingClientRect && b.getBoundingClientRect) { const d=c.getBoundingClientRect().top - b.getBoundingClientRect().top; if (Number.isFinite(d)) delta=d; } state.resultsView = Object.assign(state.resultsView || {}, { intent: state.intent, scroll: b.scrollTop, anchorId: id, anchorDelta: delta, sig: resultsScrollSig() }); } return; }
+  if (a==='detail' && state.screen==='results') { const b=document.getElementById('sheetBody'); if (b && typeof b.scrollTop==='number') { state.resultsView = Object.assign(state.resultsView || {}, { intent: state.intent, scroll: b.scrollTop, sig: resultsScrollSig() }); } return; }
   if (!['geolocate','manualOrigin','preset','areaPick','selectCard','focusMap','goUse','usageConfirm','toggleSheet','resetFilters','intentMenu','recenter','showMore','walkSet'].includes(a)) return;
   ev.stopImmediatePropagation();
   if (a==='walkSet') { const n = Number(btn.dataset.minutes); if ([5, 10, 15].includes(n)) state.walkMinutes = n; return render(); }
