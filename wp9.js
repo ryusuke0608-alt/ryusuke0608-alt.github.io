@@ -43,6 +43,7 @@ if (typeof document !== 'undefined' && document.addEventListener) {
   document.addEventListener('pointerdown', ev => { stripDownPos = (ev.target && ev.target.closest && ev.target.closest('.chips-strip')) ? { x: ev.clientX, y: ev.clientY } : null; }, { passive: true });
   document.addEventListener('pointerup', ev => { if (stripDownPos && (Math.abs(ev.clientX - stripDownPos.x) > 8 || Math.abs(ev.clientY - stripDownPos.y) > 8)) { stripDragMoved = true; if (typeof setTimeout === 'function') setTimeout(() => { stripDragMoved = false; }, 150); } stripDownPos = null; }, { passive: true });
   document.addEventListener('click', ev => { if (stripDragMoved && ev.target && ev.target.closest && ev.target.closest('.chips-strip')) { ev.stopPropagation(); ev.preventDefault(); stripDragMoved = false; } }, true);
+  document.addEventListener('input', ev => { if (ev.target && ev.target.id === 'areaFilter') { const q = ev.target.value.trim(); document.querySelectorAll('.area-list [data-action="areaPick"]').forEach(b => { b.style.display = (!q || (b.dataset.search || '').includes(q)) ? '' : 'none'; }); } });
 }
 function attachSheet() {
   const body = document.getElementById('sheetBody');
@@ -209,10 +210,12 @@ function spotSummaryText(spot) {
     return '';
   };
   const accessSentence = () => {
-    if (T('elevator_present') && T('step_free')) return 'エレベーターがあり、段差のない経路で到達できます。';
-    if (T('elevator_present')) return 'エレベーターがあります。';
-    if (T('step_free')) return '段差のない経路で到達できます。';
-    return '';
+    let s = '';
+    if (T('elevator_present') && T('step_free')) s = 'エレベーターがあり、段差のない経路で到達できます。';
+    else if (T('elevator_present')) s = 'エレベーターがあります。';
+    else if (T('step_free')) s = '段差のない経路で到達できます。';
+    if (T('stroller_ok')) s += 'ベビーカーをたたまずに入れます。';
+    return s;
   };
   const body = [];
   let price = '';
@@ -327,8 +330,11 @@ function renderSettings(){
 function renderHome() {
   return `${renderHeader('今、何したい？', false)}<section class="tagline"><p class="catch">"使えるかも"じゃなく、"使える"場所を。</p><p class="sub">載っているのは、行政データと施設の公式サイトで確認した情報だけ。休憩・食事・授乳・おむつ替え・トイレなど、色々な用途から探せます。</p><p class="scale">${new Set(SPOTS.map(s => s.area)).size}エリア・全${SPOTS.length}件のスポットを掲載しています。</p></section><section class="intro origin-card"><div class="origin-head"><span class="pin" aria-hidden="true">📍</span><div><h2>出発地点</h2><p class="origin-label">${esc(originLabel())}</p></div></div>${state.originMessage ? `<p class="origin-message" role="status">${esc(state.originMessage)}</p>` : ''}<div class="origin-actions"><button class="secondary main" data-action="geolocate">現在地を使う</button><button class="secondary" data-action="manualOrigin">場所を選ぶ</button></div><p class="muted">位置情報はこの画面の中だけで使います。</p></section><section class="intent-grid">${Object.entries(INTENTS).filter(([id]) => !state.hiddenIntents.has(id)).map(([id, i]) => `<button class="intent" data-action="intent" data-id="${id}"><span class="ic ic-${id}" aria-hidden="true">${i.icon}</span><strong>${i.label}</strong><small>${i.sub}</small></button>`).join('')}</section><div class="home-tools"><button class="secondary" data-action="settings">表示する用途を設定</button><a class="secondary" href="https://forms.gle/Zu81eGnTPPFAHziM7" target="_blank" rel="noopener">要望・誤情報の報告</a></div><details class="privacy"><summary>このサイトについて</summary><p>ヤスミルは、外出先で『今、使える場所』を探すためのサイトです。掲載している情報は、行政の公開データと施設の公式サイトで確認したものだけです。確認できていない情報は載せていません。そのぶん載っていない場所もありますが、『行ってみたら使えなかった』を減らすための方針です。位置情報は、お使いの端末の中だけで距離の計算に使い、外部へ送ることはありません。地図の表示にはOpenStreetMapを使っていて、地図画像の取得先には、表示している範囲が伝わります。「この場所は使えましたか？」への回答は、保存も送信もされません。表示する用途の設定は、この端末の中に保存されます。誤りにお気づきの点や、掲載のリクエストは、要望フォームから送れます。送られた内容は公開されず、運営だけが確認します。連絡先のメールアドレスを書いた場合は、内容の確認や連絡にだけ使い、対応が終わってから1年を目安に削除します。内容によっては、回答や情報の修正をお約束できない場合があります。</p><p><a href="./safety.html">安全性とデータの取り扱いについて</a></p></details>${renderOriginPrompt()}`;
 }
+function areaOriginLabel(area) { const st = (typeof AREA_ANCHOR_STATIONS !== 'undefined' && AREA_ANCHOR_STATIONS[area]) || ''; return st ? `${area}エリア（中心：${st}）` : `${area}エリア`; }
 function renderOrigin() {
-  return `${renderHeader('出発地点を選ぶ')}<section><p class="muted">施設の入口を選ぶか、地図をタップして地点を決めてください。</p><div class="origin-actions">${MANUAL_PRESETS.map(p => `<button class="secondary" data-action="preset" data-key="${esc(p.facility)}">${esc(p.label)}</button>`).join('')}</div>${state.originMessage ? `<p class="origin-message" role="status">${esc(state.originMessage)}</p>` : ''}</section><div id="map" class="map origin-map" aria-label="出発地点を選ぶ地図"></div><p class="map-attribution-note">地図：© OpenStreetMap contributors</p>`;
+  const areas = (typeof AREA_ANCHORS !== 'undefined') ? Object.keys(AREA_ANCHORS).sort((x, y) => x.localeCompare(y, 'ja')) : [];
+  const areaList = areas.map(a => { const st = (typeof AREA_ANCHOR_STATIONS !== 'undefined' && AREA_ANCHOR_STATIONS[a]) || ''; return `<button class="area-item" data-action="areaPick" data-key="${esc(a)}" data-search="${esc(a)} ${esc(st)}"><strong>${esc(a)}エリア</strong><small>${st ? `中心：${esc(st)}` : '中心の地点から'}</small></button>`; }).join('');
+  return `${renderHeader('出発地点を選ぶ')}<section><p class="muted">施設の入口を選ぶか、エリアを選ぶか、地図をタップして地点を決めてください。</p><div class="origin-actions">${MANUAL_PRESETS.map(p => `<button class="secondary" data-action="preset" data-key="${esc(p.facility)}">${esc(p.label)}</button>`).join('')}</div>${state.originMessage ? `<p class="origin-message" role="status">${esc(state.originMessage)}</p>` : ''}</section><section class="area-pick"><h2>エリアから選ぶ</h2><p class="muted">エリアを選ぶと、そのエリアの中心の駅（地点）を出発地点にします。距離と徒歩の目安は、中心の駅からの計算になります。</p><input type="search" id="areaFilter" class="area-filter" placeholder="エリア名・駅名で絞り込み" aria-label="エリアを絞り込む"><div class="area-list">${areaList}</div></section><div id="map" class="map origin-map" aria-label="出発地点を選ぶ地図"></div><p class="map-attribution-note">地図：© OpenStreetMap contributors</p>`;
 }
 function card(spot, result) {
   const key = state.intent;
@@ -612,7 +618,7 @@ app.addEventListener('click', ev => {
   if (a==='intent' && state.screen==='home' && !state.origin) { ev.stopImmediatePropagation(); pendingIntent = id; state.originMessage=''; render(); return; }
   if (a==='originPromptCancel') { ev.stopImmediatePropagation(); const backTo = pendingIntent; pendingIntent = null; render(); if (backTo && typeof document !== 'undefined' && typeof document.querySelector === 'function') { const b = document.querySelector(`button.intent[data-id="${backTo}"]`); if (b && typeof b.focus === 'function') b.focus(); } return; }
   if (a==='detail' && state.screen==='results') { const b=document.getElementById('sheetBody'); if (b && typeof b.scrollTop==='number') { const c=document.getElementById(`card-${id}`); let delta=null; if (c && c.getBoundingClientRect && b.getBoundingClientRect) { const d=c.getBoundingClientRect().top - b.getBoundingClientRect().top; if (Number.isFinite(d)) delta=d; } state.resultsView = Object.assign(state.resultsView || {}, { intent: state.intent, scroll: b.scrollTop, anchorId: id, anchorDelta: delta }); } return; }
-  if (!['geolocate','manualOrigin','preset','selectCard','focusMap','goUse','usageConfirm','toggleSheet','resetFilters','intentMenu','recenter','showMore','walkSet'].includes(a)) return;
+  if (!['geolocate','manualOrigin','preset','areaPick','selectCard','focusMap','goUse','usageConfirm','toggleSheet','resetFilters','intentMenu','recenter','showMore','walkSet'].includes(a)) return;
   ev.stopImmediatePropagation();
   if (a==='walkSet') { const n = Number(btn.dataset.minutes); if ([5, 10, 15].includes(n)) state.walkMinutes = n; return render(); }
   if (a==='showMore') { const caps = sectionCaps(); const sec = btn.dataset.section; if (caps[sec]) caps[sec] += SECTION_CAP; return render(); }
@@ -623,6 +629,7 @@ app.addEventListener('click', ev => {
   if (a==='geolocate') return useGeolocation();
   if (a==='manualOrigin') return enter('origin');
   if (a==='preset') { const at=FACILITY_ENTRANCES[key]; if (!at) return; state.origin={kind:'preset',lat:at.lat,lon:at.lon,label:MANUAL_PRESETS.find(p=>p.facility===key)?.label||key,selectedAt:new Date().toISOString()}; state.originMessage='出発地点を設定しました。'; if (!proceedPendingIntent()) back(); return; }
+  if (a==='areaPick') { const at=(typeof AREA_ANCHORS!=='undefined')?AREA_ANCHORS[key]:null; if (!at) return; state.origin={kind:'area',lat:at.lat,lon:at.lon,label:areaOriginLabel(key),selectedAt:new Date().toISOString()}; state.originMessage='出発地点を設定しました。'; if (!proceedPendingIntent()) back(); return; }
   if (a==='selectCard') { highlightCard(id, true); const spot=SPOTS.find(s=>s.id===id); if (spot) selectFacilityMarker(spot.facility); return; }
   if (a==='focusMap') { const spot=SPOTS.find(s=>s.id===id), marker=spot&&facilityMarkers.get(spot.facility); highlightCard(id, false); if (spot) selectFacilityMarker(spot.facility); if (marker&&mapInstance) { marker.openPopup(); mapInstance.panTo(marker.getLatLng()); document.getElementById('map').scrollIntoView({behavior:'smooth',block:'center'}); } return; }
   if (a==='goUse') return enter('route');
