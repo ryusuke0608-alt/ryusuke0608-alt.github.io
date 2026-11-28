@@ -14,41 +14,71 @@
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://yasumiru.kei-lab.xyz/safety.html">
   <meta property="og:image" content="https://yasumiru.kei-lab.xyz/ogp.png">
+  <style>
+    /* 本体サイト（style.css）と同じ色・書体・部品にそろえる（2026-11-28 現地レビュー指摘：このページだけ質素だった） */
+    :root{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",Meiryo,sans-serif;color:#26312c;background:#efe9df;font-size:16px;--teal:#177e6c;--teal-dark:#0f5f51;--cream:#fff8ef;--ink:#26312c;--muted:#71807a;--line:#e7ded2}
+    *{box-sizing:border-box}
+    body{margin:0}
+    .phone{max-width:440px;min-height:100vh;margin:auto;background:var(--cream);box-shadow:0 0 24px #7a6a4d26;padding-bottom:40px}
+    a:focus-visible{outline:3px solid #e8a13a;outline-offset:2px}
+    .top{display:flex;align-items:center;gap:12px;padding:16px;background:linear-gradient(135deg,#1b8a74,#0f5f51);color:#fff;border-radius:0 0 20px 20px;min-height:82px}
+    .top small{display:block;color:#ffffffd9;font-size:12px}
+    .top h1{font-size:22px;margin:2px 0 0;line-height:1.25}
+    .icon-btn{display:flex;align-items:center;justify-content:center;width:44px;height:44px;flex:none;border:1px solid #ffffff57;border-radius:12px;background:#ffffff2b;color:#fff;font-size:20px;text-decoration:none}
+    main{padding:18px 16px 0}
+    .intro{margin:0 2px 16px;font-size:15px;line-height:1.8}
+    section{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:13px;box-shadow:0 3px 10px #7a6a4d14}
+    section h2{font-size:17px;margin:0 0 8px;color:var(--teal-dark);line-height:1.4}
+    section p{margin:0;font-size:15px;line-height:1.8}
+    section ul{margin:8px 0 0;padding-left:20px;font-size:15px;line-height:1.8}
+    section li{margin-bottom:6px}
+    .foot-links{display:grid;gap:10px;margin-top:18px}
+    .foot-links a{display:block;text-align:center;background:#fff;border:1px solid #b9c8c2;color:var(--teal-dark);border-radius:12px;font-weight:700;padding:13px 14px;text-decoration:none}
+  </style>
 </head>
 <body>
-  <main>
-    <h1>安全性とデータの取り扱いについて</h1>
-    <p>ヤスミルは、個人情報をできるだけ集めない作りにしています。このページでは、データの取り扱いをまとめています。</p>
-    <section>
-      <h2>会員登録はありません</h2>
-      <p>ヤスミルの利用に、会員登録やログインは必要ありません。名前、メールアドレス、電話番号などをサイト上で入力していただくこともありません。</p>
-    </section>
-    <section>
-      <h2>位置情報は、あなたの端末の中だけで使います</h2>
-      <p>現在地からの距離や徒歩の目安を表示するために位置情報を使うことがありますが、これはお使いの端末の中だけで処理します。位置情報をサーバーへ送ったり、保存したりすることはありません。検索した場所や条件も、サーバーには送られません。</p>
-    </section>
-    <section>
-      <h2>サーバーにデータを集める仕組みがありません</h2>
-      <p>ヤスミルは、ページを表示するだけの静的なサイトです。利用状況を追跡する仕組みや、広告のためのデータ収集は入れていません。</p>
-    </section>
-    <section>
-      <h2>運営が受け取るのは、フォームから送られたものだけです</h2>
-      <p>次の2つのフォームから送られた内容だけは、運営が確認のために読みます。</p>
-      <ul>
-        <li>要望・誤情報の報告フォーム：報告への対応のために使います。対応が終わってから1年を目安に削除します。</li>
-        <li>写真の投稿フォーム：掲載するかどうかを審査するために使います。審査では、写真に記録されている撮影場所の情報（EXIF）を読み、施設の場所と合っているかを確認します。掲載する写真には「利用者提供（審査済み）」と表示します。</li>
-      </ul>
-      <p>どちらのフォームも Google フォームを使っています。入力した内容は Google のサーバーに保管されます。</p>
-    </section>
-    <section>
-      <h2>掲載している情報について</h2>
-      <p>場所が使えるかどうかや設備についての情報は、行政データと施設の公式サイトで確認したものだけを載せています。確認できていないことは「使える」ものとして載せません。</p>
-    </section>
-    <section>
-      <h2>お問い合わせ</h2>
-      <p>情報の取り扱いについてのご質問は、要望・誤情報の報告フォームからお送りください。</p>
-    </section>
-    <p><a href="./">ヤスミルの検索画面へ</a>／<a href="./list.html">全スポット一覧（簡易版）</a></p>
-  </main>
+  <div class="phone">
+    <header class="top">
+      <a class="icon-btn" href="./" aria-label="戻る">←</a>
+      <div><small>ヤスミル</small><h1>安全性とデータの取り扱いについて</h1></div>
+    </header>
+    <main>
+      <p class="intro">ヤスミルは、個人情報をできるだけ集めない作りにしています。このページでは、データの取り扱いをまとめています。</p>
+      <section>
+        <h2>会員登録はありません</h2>
+        <p>ヤスミルの利用に、会員登録やログインは必要ありません。名前、メールアドレス、電話番号などをサイト上で入力していただくこともありません。</p>
+      </section>
+      <section>
+        <h2>位置情報は、あなたの端末の中だけで使います</h2>
+        <p>現在地からの距離や徒歩の目安を表示するために位置情報を使うことがありますが、これはお使いの端末の中だけで処理します。位置情報をサーバーへ送ったり、保存したりすることはありません。検索した場所や条件も、サーバーには送られません。</p>
+      </section>
+      <section>
+        <h2>サーバーにデータを集める仕組みがありません</h2>
+        <p>ヤスミルは、ページを表示するだけの静的なサイトです。利用状況を追跡する仕組みや、広告のためのデータ収集は入れていません。</p>
+      </section>
+      <section>
+        <h2>運営が受け取るのは、フォームから送られたものだけです</h2>
+        <p>次の3つのフォームから送られた内容だけは、運営が確認のために読みます。</p>
+        <ul>
+          <li>利用確認フォーム：「この場所は使えましたか？」への回答を受け取ります。情報の修正や再確認のために使います。送られるのは場所と回答の内容だけで、個人を特定する情報は集めません。</li>
+          <li>要望・誤情報の報告フォーム：報告への対応のために使います。対応が終わってから1年を目安に削除します。</li>
+          <li>写真の投稿フォーム：掲載するかどうかを審査するために使います。審査では、写真に記録されている撮影場所の情報（EXIF）を読み、施設の場所と合っているかを確認します。掲載する写真には「利用者提供（審査済み）」と表示します。</li>
+        </ul>
+        <p>いずれのフォームも Google フォームを使っています。入力した内容は Google のサーバーに保管されます。</p>
+      </section>
+      <section>
+        <h2>掲載している情報について</h2>
+        <p>場所が使えるかどうかや設備についての情報は、行政データと施設の公式サイトで確認したものだけを載せています。確認できていないことは「使える」ものとして載せません。</p>
+      </section>
+      <section>
+        <h2>お問い合わせ</h2>
+        <p>情報の取り扱いについてのご質問は、要望・誤情報の報告フォームからお送りください。</p>
+      </section>
+      <div class="foot-links">
+        <a href="./">ヤスミルの検索画面へ</a>
+        <a href="./list.html">全スポット一覧（簡易版）</a>
+      </div>
+    </main>
+  </div>
 </body>
 </html>

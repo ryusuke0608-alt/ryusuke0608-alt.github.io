@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://yasumiru.kei-lab.xyz/areas/koshigaya-work.html</loc><lastmod>2026-11-28</lastmod></url>
-  <url><loc>https://yasumiru.kei-lab.xyz/areas/tokorozawa-toilet.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/tokorozawa-rest.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/tokorozawa-eat.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/tokorozawa-nursing.html</loc><lastmod>2026-11-28</lastmod></url>
@@ -294,6 +292,7 @@
   <url><loc>https://yasumiru.kei-lab.xyz/areas/ibaraki-rest.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/ibaraki-nursing.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/ibaraki-diaper.html</loc><lastmod>2026-11-28</lastmod></url>
+  <url><loc>https://yasumiru.kei-lab.xyz/areas/yao-toilet.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/yao-rest.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/yao-eat.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/yao-nursing.html</loc><lastmod>2026-11-28</lastmod></url>
@@ -394,6 +393,7 @@
   <url><loc>https://yasumiru.kei-lab.xyz/areas/takamatsu-toilet.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/takamatsu-rest.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/takamatsu-nursing.html</loc><lastmod>2026-11-28</lastmod></url>
+  <url><loc>https://yasumiru.kei-lab.xyz/areas/matsuyama-toilet.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/matsuyama-rest.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/matsuyama-nursing.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/matsuyama-work.html</loc><lastmod>2026-11-28</lastmod></url>
@@ -401,6 +401,7 @@
   <url><loc>https://yasumiru.kei-lab.xyz/areas/kochi-nursing.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/kochi-diaper.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/imabari-toilet.html</loc><lastmod>2026-11-28</lastmod></url>
+  <url><loc>https://yasumiru.kei-lab.xyz/areas/kitakyushu-toilet.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/kitakyushu-nursing.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/kitakyushu-diaper.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/saga-toilet.html</loc><lastmod>2026-11-28</lastmod></url>
@@ -444,6 +445,7 @@
   <url><loc>https://yasumiru.kei-lab.xyz/areas/bunkyo-nursing.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/bunkyo-diaper.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/bunkyo-work.html</loc><lastmod>2026-11-28</lastmod></url>
+  <url><loc>https://yasumiru.kei-lab.xyz/areas/meguro-toilet.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/meguro-nursing.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/meguro-diaper.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/meguro-work.html</loc><lastmod>2026-11-28</lastmod></url>
@@ -510,8 +512,10 @@
   <url><loc>https://yasumiru.kei-lab.xyz/areas/mitaka-toilet.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/mitaka-nursing.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/mitaka-diaper.html</loc><lastmod>2026-11-28</lastmod></url>
+  <url><loc>https://yasumiru.kei-lab.xyz/areas/kokubunji-toilet.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/kokubunji-nursing.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/kokubunji-diaper.html</loc><lastmod>2026-11-28</lastmod></url>
+  <url><loc>https://yasumiru.kei-lab.xyz/areas/chofu-toilet.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/chofu-rest.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/chofu-nursing.html</loc><lastmod>2026-11-28</lastmod></url>
   <url><loc>https://yasumiru.kei-lab.xyz/areas/chofu-diaper.html</loc><lastmod>2026-11-28</lastmod></url>
